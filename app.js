@@ -26,11 +26,13 @@ function loadRanks(fallback){
 function loadState(){
   const old=read(STORAGE.legacy,{});
   return {...freshState(),...old,
-    story:read(STORAGE.story,old.story||freshState().story),
-    ranks:loadRanks(read(STORAGE.ranks,old.ranks||freshState().ranks)),
-    patterns:read(STORAGE.patterns,old.patterns||{}),
-    titles:read(STORAGE.titles,old.titles||[]),
-    caseNo:read(STORAGE.caseNo,old.caseNo||0)};
+    // 新形式の一括保存データを最優先にする。
+    // 分割キーは、過去バージョンからの移行時だけ利用する。
+    story:Array.isArray(old.story)?old.story:read(STORAGE.story,freshState().story),
+    ranks:Array.isArray(old.ranks)?old.ranks:loadRanks(read(STORAGE.ranks,freshState().ranks)),
+    patterns:old.patterns&&typeof old.patterns==='object'?old.patterns:read(STORAGE.patterns,{}),
+    titles:Array.isArray(old.titles)?old.titles:read(STORAGE.titles,[]),
+    caseNo:Number.isFinite(old.caseNo)?old.caseNo:read(STORAGE.caseNo,0)};
 }
 // localStorageは同期処理なので、複数キーへ何度も書き込むと
 // タブレットで画面が一瞬止まりやすい。状態全体を1キーにまとめる。
@@ -89,7 +91,17 @@ function nextPractice(){
 
 function makeMCQ(pattern,text,options,correct,explain,visual){
   if(typeof correct!=='number'){visual=explain;explain=correct;correct=0}
-  const pairs=options.map(function(value,index){return {value:String(value),correct:index===correct}}).filter(function(item,index,all){return all.findIndex(function(other){return other.value===item.value})===index});
+  const pairs=[],seen={};
+  options.forEach(function(value,index){
+    const textValue=String(value);
+    if(seen[textValue]===undefined){
+      seen[textValue]=pairs.length;
+      pairs.push({value:textValue,correct:index===correct});
+    }else if(index===correct){
+      // 正解と同じ選択肢が重複した場合も、正解情報を失わない。
+      pairs[seen[textValue]].correct=true;
+    }
+  });
   const shuffled=shuffle(pairs);
   return {kind:'mcq',pattern:pattern,text:text,choices:shuffled.map(function(item){return item.value}),answer:shuffled.findIndex(function(item){return item.correct}),explain:explain,visual:visual||''};
 }
