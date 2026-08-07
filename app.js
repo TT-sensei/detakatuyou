@@ -2,7 +2,7 @@
 // 町のデータ探偵団 — 学習・練習・進捗を一体で管理するアプリ
 const STORAGE={legacy:'detective_data_progress_v1',story:'detective_story_progress',ranks:'detective_rank_steps',patterns:'detective_weak_patterns',titles:'detective_titles',caseNo:'detective_case_no'};
 const freshState=()=>({story:[false,false,false,false,false],ranks:[0,0,0,0,0],patterns:{},titles:[],caseNo:0,solved:0});
-let state=loadState(),mode='home',step=0,queue=[],questionIndex=0,practiceIndex=0,current=null,answered=false,forcedPracticePattern=null,buildCounts=[];
+let state=loadState(),mode='home',step=0,queue=[],questionIndex=0,practiceIndex=0,practiceAttempts=0,current=null,answered=false,forcedPracticePattern=null,buildCounts=[];
 
 const STEPS=[
   {title:'散らばりの事件',short:'ドットプロット',icon:'●',intro:'6年1組のハンドボール投げの記録。去年より強くなったというウワサは本当か、散らばりから調べよう。',flavor:['学校の記録','町内運動会の記録','スポーツ大会の記録']},
@@ -10,6 +10,13 @@ const STEPS=[
   {title:'整理の事件',short:'度数分布表',icon:'▤',intro:'町の調査データが多すぎて読めない。階級に分け、度数分布表で手がかりを整理しよう。',flavor:['町の調査','健康調査','通学時間の調査']},
   {title:'山の形の事件',short:'ヒストグラム',icon:'▥',intro:'同じデータなのに、グラフの形がちがって見える。柱をすき間なく並べて分布の山を見つけよう。',flavor:['気温の記録','歩数の記録','読書時間の記録']},
   {title:'結論の事件',short:'読み解き・吟味',icon:'⌕',intro:'「この町の人はみんな運動が得意」と書かれた報告書。データの集め方や目盛りまで調べ、結論を吟味しよう。',flavor:['町の健康報告','アンケート結果','新聞のグラフ']}
+];
+const CONCEPTS=[
+  {title:'散らばりを見る',summary:'点がどこに集まり、どこまで広がっているかを見る。',formula:'範囲＝最大値−最小値',trap:'平均値だけで、データの広がりを決めない。'},
+  {title:'目的に合う代表値を選ぶ',summary:'平均値・中央値・最頻値は、得意な見方がちがう。',formula:'平均値＝合計÷個数',trap:'極端な値があると、平均値は大きく動く。'},
+  {title:'区間に分けて整理する',summary:'データを同じ幅の階級に分け、度数を数える。',formula:'度数＝その階級に入るデータの個数',trap:'「以上」は入る。「未満」は入らない。'},
+  {title:'分布の形を見る',summary:'柱の高さだけでなく、山の数や横への広がりを見る。',formula:'柱をつなげて全体の形を読む',trap:'ヒストグラムの柱の間にすき間はあけない。'},
+  {title:'結論を吟味する',summary:'データの集め方・代表値・目盛りを確かめて判断する。',formula:'根拠＝データ＋集め方＋見せ方',trap:'一つの数値やグラフだけで決めつけない。'}
 ];
 
 function read(key,fallback){try{const value=localStorage.getItem(key);return value===null?fallback:JSON.parse(value)}catch{return fallback}}
@@ -49,11 +56,6 @@ function header(){
 function render(html){document.querySelector('#app').innerHTML=header()+html;window.scrollTo({top:0,behavior:'smooth'})}
 function goHome(){mode='home';renderHome()}
 
-function renderHome(){
-  const cleared=state.story.filter(Boolean).length;
-  render('<section class="hero"><div class="eyebrow">CASE FILE 000　データ活用調査本部</div><h2>町のデータ探偵団</h2><p>町に届く「本当かな？」を、データという手がかりで解決しよう。散らばり・代表値・度数分布表・ヒストグラム・結論の吟味まで、5つの事件に挑戦します。</p><div class="top-actions"><button class="btn primary" onclick="startStory()">'+(cleared?'物語をつづける':'基本学習をはじめる')+'</button><button class="btn gold" onclick="showPracticeSelect()">名探偵への道</button></div></section><div class="grid"><article class="card mode-card"><div><div class="mode-icon">📖</div><h3>基本学習モード</h3><p class="muted">物語を追いながら、5つの事件を順番に解決します。</p></div><span class="pill">'+cleared+'/5章クリア</span></article><article class="card mode-card"><div><div class="mode-icon">🕵️</div><h3>練習モード</h3><p class="muted">問題は毎回変化。未解決事件（にがて）が優先して出ます。</p></div><span class="pill gold">ランクアップ式</span></article></div><div class="section-title"><h2>5つの事件</h2><span class="muted">'+(cleared===5?'全事件解決！':'順番に解決しよう')+'</span></div><div class="steps">'+STEPS.map(function(s,i){return '<article class="card step-card '+(i>0&&!state.story[i-1]?'locked':'')+'"><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><span class="'+(state.story[i]?'pill':'muted')+'">'+(state.story[i]?'解決済み':i>0&&!state.story[i-1]?'🔒 前の事件から':'挑戦できる')+'</span></article>'}).join('')+'</div>');
-}
-
 function startStory(){mode='story';renderChapters()}
 function renderChapters(){
   render('<div class="section-title"><h2>事件選択</h2><span class="muted">基本学習モード</span></div><div class="steps">'+STEPS.map(function(s,i){const open=i===0||state.story[i-1];return '<button class="card step-card '+(!open?'locked':'')+'" '+(open?'onclick="openStory('+i+')"':'')+'><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.title+'</h3><span class="'+(state.story[i]?'pill':'muted')+'">'+(state.story[i]?'解決済み':open?'調査開始':'🔒 前の事件を解決')+'</span></button>'}).join('')+'</div><div class="card" style="margin-top:18px"><h3>調査の進み具合</h3><div class="progress"><i style="width:'+(state.story.filter(Boolean).length*20)+'%"></i></div><p class="muted">'+state.story.filter(Boolean).length+'/5事件</p></div>');
@@ -73,7 +75,7 @@ function showPracticeSelect(){
   render('<div class="section-title"><h2>名探偵への道</h2><span class="muted">鍛えたい章を選ぼう</span></div><div class="steps">'+STEPS.map(function(s,i){const n=state.ranks[i]||0;return '<button class="card step-card" onclick="startPractice('+i+')"><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><span class="rank">'+rankName(n)+'</span><small class="muted">正解 '+n+'問</small></button>'}).join('')+'</div>');
 }
 function startPractice(index,pattern){
-  mode='practice';step=index;practiceIndex=0;forcedPracticePattern=pattern||null;answered=false;nextPractice();
+  mode='practice';step=index;practiceIndex=0;practiceAttempts=0;forcedPracticePattern=pattern||null;answered=false;nextPractice();
 }
 function nextPractice(){
   state.caseNo++;saveState();current=getQuestion(step,forcedPracticePattern);answered=false;renderQuiz();
@@ -219,7 +221,9 @@ function renderQuiz(){
   }else{
     body=(q.visual||'')+'<div class="choices">'+q.choices.map(function(c,i){return '<button class="choice" id="choice'+i+'" onclick="answerChoice('+i+')">'+esc(c)+'</button>'}).join('')+'</div>';
   }
-  render('<section class="card question"><div class="q-head"><span class="q-number">'+number+'</span><span class="pill">'+s.short+'</span></div>'+(mode==='practice'?'<div class="case-file"><b>'+flavor+'</b>から届いた未解決事件。データを手がかりに調査しよう。</div>':'')+'<h2 class="q-title">'+q.text+'</h2>'+body+'<div id="feedback"></div></section>');
+  const concept=CONCEPTS[step];
+  const studyCard='<details class="study-card"><summary>見方カード：「'+concept.title+'」</summary><p>'+concept.summary+'</p><small><b>覚えておくこと：</b>'+concept.formula+'　<b>注意：</b>'+concept.trap+'</small></details>';
+  render('<section class="card question"><div class="q-head"><span class="q-number">'+number+'</span><span class="pill">'+s.short+'</span></div>'+(mode==='practice'?'<div class="case-file"><b>'+flavor+'</b>から届いた未解決事件。データを手がかりに調査しよう。</div>':'')+'<h2 class="q-title">'+q.text+'</h2>'+studyCard+body+'<div id="feedback"></div></section>');
 }
 function buildDotsMarkup(q){
   return '<div class="build-axis">'+q.values.map(function(value,index){return '<div class="build-column"><div class="build-stack">'+Array.from({length:buildCounts[index]||0},function(){return '<i class="dot build-dot"></i>'}).join('')+'</div><div class="build-controls"><button class="axis-number minus" onclick="removeBuildDot('+index+')">−</button><span class="axis-number value">'+value+'</span><button class="axis-number" onclick="addBuildDot('+index+')">＋</button></div></div>'}).join('')+'</div>';
@@ -234,6 +238,7 @@ function checkBuild(){
   if(answered)return;
   const ok=current.targetCounts.every(function(n,i){return n===buildCounts[i]});
   if(ok){submitAnswer(true);return}
+  if(mode==='practice')practiceAttempts++;
   record(current.pattern,false);
   const first=buildCounts.findIndex(function(n,i){return n!==current.targetCounts[i]});
   document.querySelector('#buildStatus').textContent=buildCounts[first]>current.targetCounts[first]?'この数の点が少し多いようです。データの数を数え直そう。':'この数の点がまだ足りないようです。データの数を数え直そう。';
@@ -254,6 +259,7 @@ function hintFor(pattern){
 function retryCurrent(){answered=false;renderQuiz()}
 function submitAnswer(ok){
   if(answered)return;answered=true;record(current.pattern,ok);
+  if(mode==='practice')practiceAttempts++;
   if(!ok){
     const feedback=document.querySelector('#feedback');feedback.className='feedback bad';
     feedback.innerHTML='<b>おしい。まだ次の事件には進めません。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="retryCurrent()">同じ問題にもう一度挑戦</button>';
@@ -274,7 +280,7 @@ function afterAnswer(){
   if(practiceIndex<4){practiceIndex++;nextPractice()}else renderPracticeResult();
 }
 function renderPracticeResult(){
-  render('<section class="result-card card"><div style="font-size:4rem">🕵️</div><div class="eyebrow">5問セッション完了</div><h2>'+STEPS[step].short+'の調査結果</h2><p>5問の調査を終えました。間違えた問題も、次の出題で手がかりとして活用されます。</p><div class="case-file"><b>現在のランク</b><p class="rank">'+rankName(state.ranks[step])+'　／　累積正解 '+state.ranks[step]+'問</p></div><button class="btn primary" onclick="startPractice('+step+')">もう5問調べる</button><button class="btn ghost" onclick="showPracticeSelect()">章選択へ</button><button class="btn" onclick="showNotebook()">探偵手帳を見る</button></section>');
+  render('<section class="result-card card"><div style="font-size:4rem">🕵️</div><div class="eyebrow">5問セッション完了</div><h2>'+STEPS[step].short+'の調査結果</h2><p>5問の調査を終えました。正解するまで考えた回数も、次の学習に生かされます。</p><div class="case-file"><b>今回の調査</b><p>5問クリア　／　挑戦した回数 '+practiceAttempts+'回</p><p class="rank">'+rankName(state.ranks[step])+'　／　累積正解 '+state.ranks[step]+'問</p></div><button class="btn primary" onclick="startPractice('+step+')">もう5問調べる</button><button class="btn ghost" onclick="showPracticeSelect()">章選択へ</button><button class="btn" onclick="showNotebook()">探偵手帳を見る</button></section>');
 }
 function record(pattern,ok){
   const key='s'+(step+1)+'-'+pattern,p=state.patterns[key]||{wrong:0,right:0,weak:false};
@@ -321,10 +327,18 @@ function patternLabel(id){
   return labels[id]||id;
 }
 function startWeakPractice(index,pattern){startPractice(Number(index),pattern)}
+function exportProgress(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download='町のデータ探偵団_学習記録.json';link.click();setTimeout(function(){URL.revokeObjectURL(url)},1000);
+}
+function resetProgress(){
+  if(!confirm('学習記録とランクをすべて消去します。よろしいですか？'))return;
+  state=freshState();saveState();goHome();
+}
 function showNotebook(){
   const chapters=STEPS.map(function(s,i){const n=state.ranks[i]||0;return '<article class="card"><div class="bar"><b>Step '+(i+1)+'　'+s.short+'</b><span class="rank">'+rankName(n)+'</span></div><p class="muted">累積正解 '+n+'問　／　解決済み事件 '+n+'件</p><div class="progress"><i style="width:'+Math.min(100,n/2)+'%"></i></div><button class="btn primary" style="margin-top:12px" onclick="startPractice('+i+')">この章を特訓</button></article>'}).join('');
   const weak=Object.entries(state.patterns).filter(function(pair){return pair[1].weak}).map(function(pair){const id=pair[0],p=pair[1],index=Number(id[1])-1;return '<div class="weak"><span><b>'+patternLabel(id)+'</b><br><small>連続'+p.wrong+'回不正解</small></span><button class="btn" data-step="'+index+'" data-pattern="'+id.slice(3)+'" onclick="startWeakPractice(this.dataset.step,this.dataset.pattern)">特訓</button></div>'}).join('')||'<div class="empty">まだ未解決事件はありません。間違いも大切な手がかりです。</div>';
-  render('<div class="section-title"><h2>探偵手帳</h2><span class="muted">調査の記録</span></div><div class="grid">'+chapters+'</div><section class="card" style="margin-top:18px"><h3>未解決事件（にがてパターン）</h3><div class="note-list">'+weak+'</div></section><section class="card" style="margin-top:18px"><h3>称号</h3><p>'+(state.titles.includes('殿堂入り探偵')?'<span class="pill gold">殿堂入り探偵</span>':'5つの章すべてで伝説の探偵を目指そう。')+'</p></section>');
+  render('<div class="section-title"><h2>探偵手帳</h2><span class="muted">調査の記録</span></div><div class="grid">'+chapters+'</div><section class="card" style="margin-top:18px"><h3>未解決事件（にがてパターン）</h3><div class="note-list">'+weak+'</div></section><section class="card" style="margin-top:18px"><h3>称号</h3><p>'+(state.titles.includes('殿堂入り探偵')?'<span class="pill gold">殿堂入り探偵</span>':'5つの章すべてで伝説の探偵を目指そう。')+'</p></section><section class="card management" style="margin-top:18px"><h3>学習記録の管理</h3><p class="muted">この端末のブラウザに保存されています。先生に見せたり、端末を変えたりするときは記録を書き出せます。</p><button class="btn" onclick="exportProgress()">記録を書き出す</button><button class="btn ghost" onclick="resetProgress()">記録をリセット</button></section>');
 }
 function renderHome(){
   const cleared=state.story.filter(Boolean).length;
