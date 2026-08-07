@@ -234,20 +234,33 @@ function checkBuild(){
 function answerChoice(index){
   if(answered)return;
   const ok=index===current.answer;
-  document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});
+  document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});
   submitAnswer(ok);
 }
+function hintFor(pattern){
+  if(pattern.startsWith('dot-'))return 'ドットの位置と、同じ数の点の数をもう一度見よう。';
+  if(pattern.startsWith('rep-'))return '「何を知りたいか」と、代表値の意味を結び付けて考えよう。';
+  if(pattern.startsWith('freq-'))return '階級の下の値は入れ、上の「未満」の値は入れないことを確かめよう。';
+  if(pattern.startsWith('hist-'))return '柱の高さだけでなく、横への広がりや山のまとまりも見よう。';
+  return '結論だけでなく、データの集め方や見せ方に目を向けよう。';
+}
+function retryCurrent(){answered=false;renderQuiz()}
 function submitAnswer(ok){
   if(answered)return;answered=true;record(current.pattern,ok);
+  if(!ok){
+    const feedback=document.querySelector('#feedback');feedback.className='feedback bad';
+    feedback.innerHTML='<b>おしい。まだ次の事件には進めません。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="retryCurrent()">同じ問題にもう一度挑戦</button>';
+    return;
+  }
   let rankUp='';
-  if(mode==='practice'&&ok){
+  if(mode==='practice'){
     const before=rankName(state.ranks[step]);state.ranks[step]++;state.solved++;const after=rankName(state.ranks[step]);
     if(before!==after)rankUp='<div class="rank-up">🎉 '+after+'に昇格！<br><small>先輩探偵「その調子で、データの見方をみがこう！」</small></div>';
     if(state.ranks.every(function(n){return n>=200})&&!state.titles.includes('殿堂入り探偵'))state.titles.push('殿堂入り探偵');
     saveState();
   }
-  const feedback=document.querySelector('#feedback');feedback.className='feedback '+(ok?'ok':'bad');
-  feedback.innerHTML='<b>'+ (ok?'正解！':'もう一度、手がかりを見直そう。') +'</b>'+rankUp+'<p>'+current.explain+'</p><button class="btn '+(ok?'primary':'ghost')+'" onclick="afterAnswer()">'+(mode==='story'?(questionIndex<queue.length-1?'次の問題へ':'章末ミニ問題へ'):'次の事件を調べる')+'</button>';
+  const feedback=document.querySelector('#feedback');feedback.className='feedback ok';
+  feedback.innerHTML='<b>正解！</b>'+rankUp+'<p>'+current.explain+'</p><button class="btn primary" onclick="afterAnswer()">'+(mode==='story'?(questionIndex<queue.length-1?'次の問題へ':'章末ミニ問題へ'):'次の事件を調べる')+'</button>';
 }
 function afterAnswer(){
   if(mode==='story'){if(questionIndex<queue.length-1){questionIndex++;current=queue[questionIndex];renderQuiz()}else renderMini();return}
@@ -269,12 +282,17 @@ function miniQuestion(index){
   ][index]();
 }
 function renderMini(){
-  current=miniQuestion(step);answered=false;
+  current=miniQuestion(step);renderMiniCurrent();
+}
+function renderMiniCurrent(){
+  answered=false;
   render('<section class="card question"><div class="eyebrow">章末ミニ問題</div><h2 class="q-title">'+current.text+'</h2><div class="choices">'+current.choices.map(function(c,i){return '<button class="choice" onclick="answerMini('+i+')">'+esc(c)+'</button>'}).join('')+'</div><div id="feedback"></div></section>');
 }
 function answerMini(index){
-  if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(current.pattern,ok);
-  const feedback=document.querySelector('#feedback');feedback.className='feedback '+(ok?'ok':'bad');feedback.innerHTML='<b>'+(ok?'正解！':'考え方を確認しよう。')+'</b><p>'+current.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>';
+  if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(current.pattern,ok);
+  const feedback=document.querySelector('#feedback');
+  if(!ok){feedback.className='feedback bad';feedback.innerHTML='<b>おしい。章を解決するには正解が必要です。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="renderMiniCurrent()">もう一度考える</button>';return}
+  feedback.className='feedback ok';feedback.innerHTML='<b>正解！</b><p>'+current.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>';
 }
 function finishStory(){
   state.story[step]=true;saveState();
