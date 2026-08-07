@@ -12,6 +12,7 @@ const steps=[
  {title:'結論の事件',short:'読み解き・吟味',icon:'⌕',intro:'「この町の人はみんな運動が得意」と書かれた報告書。データの集め方や目盛りまで調べ、結論を吟味しよう。',flavor:['町の健康報告','アンケート結果','新聞のグラフ']}
 ];
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+function shuffleQuestion(q){let arr=q.choices.map((choice,index)=>({choice,correct:index===q.answer}));for(let i=arr.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[arr[i],arr[j]]=[arr[j],arr[i]]}return {...q,choices:arr.map(x=>x.choice),answer:arr.findIndex(x=>x.correct)}}
 function header(){return `<header class="top"><div class="brand"><div class="badge">⌕</div><div><h1>町のデータ探偵団</h1><small>データを見て、考えて、確かな結論を</small></div></div><div class="top-actions"><button class="btn" onclick="showNotebook()">探偵手帳</button><button class="btn ghost" onclick="goHome()">トップ</button></div></header>`}
 function render(html){document.querySelector('#app').innerHTML=header()+html;window.scrollTo({top:0,behavior:'smooth'})}
 function goHome(){screen='home';renderHome()}
@@ -28,8 +29,8 @@ function answer(i){if(answered)return;answered=true;let q=current,ok=i===q.answe
 function afterAnswer(ok){if(mode==='story'){if(qi<queue.length-1){qi++;answered=false;current=null;renderQuiz()}else renderMini()}else nextPractice()}
 function record(pattern,ok){let key=pattern.startsWith('s')?pattern:`s${step+1}-${pattern}`,p=state.patterns[key]||{wrong:0,right:0,weak:false};if(ok){p.right++;p.wrong=0;if(p.right>=2)p.weak=false}else{p.wrong++;p.right=0;if(p.wrong>=3)p.weak=true}state.patterns[key]=p;save()}
 function makeQuestions(s,n){return Array.from({length:n},()=>makeQuestion(s))}
-function makeQuestion(s){let weak=Object.entries(state.patterns).filter(([id,p])=>p.weak&&id.startsWith('s'+(s+1)+'-'));if(weak.length&&Math.random()<.65){let id=weak[Math.floor(Math.random()*weak.length)][0];return makeQuestionByPattern(s,id)}return [qDot,qRep,qFreq,qHist,qCrit][s]({patternPrefix:'s'+(s+1)+'-'})}
-function makeQuestionByPattern(s,id){return [qDot,qRep,qFreq,qHist,qCrit][s]({pattern:id.slice(3)})}
+function makeQuestion(s){let weak=Object.entries(state.patterns).filter(([id,p])=>p.weak&&id.startsWith('s'+(s+1)+'-'));if(weak.length&&Math.random()<.65){let id=weak[Math.floor(Math.random()*weak.length)][0];return makeQuestionByPattern(s,id)}let q=s===0&&Math.random()<.28?qDotBuild():[qDot,qRep,qFreq,qHist,qCrit][s]();return shuffleQuestion(q)}
+function makeQuestionByPattern(s,id){let q=[qDot,qRep,qFreq,qHist,qCrit][s]({pattern:id.slice(3)});return q.kind==='build-dot'?q:shuffleQuestion(q)}
 function dotData(){let base=Array.from({length:7},(_,i)=>i+3),data=[];base.forEach(v=>{for(let j=0;j<Math.floor(Math.random()*4)+(v===6?2:0);j++)data.push(v)});return data.sort((a,b)=>a-b)}
 function dotVisual(data){let min=Math.min(...data),max=Math.max(...data);return `<div class="chart"><div class="dotplot">${Array.from({length:max-min+1},(_,j)=>{let v=min+j,c=data.filter(x=>x===v).length;return `<div class="dot-col">${Array.from({length:c},()=>'<i class="dot"></i>').join('')}<span class="dot-label">${v}</span></div>`}).join('')}</div></div>`}
 function qDot(){let d=dotData(),min=Math.min(...d),max=Math.max(...d);let type=Math.random()<.5?'range':'max';return {pattern:'dot-'+type,text:`このドットプロットの${type==='range'?'範囲（最大値−最小値）':'最大値'}はいくつですか。`,visual:dotVisual(d),choices:type==='range'?[String(max-min),String(max+min),String(d.length),String(max-min+1)]:[String(max),String(min),String(max-min),String(d.length)],answer:0,explain:type==='range'?`最大値${max}から最小値${min}をひいて、${max}-${min}=${max-min}です。`:`いちばん右の点が最大値です。${max}でした。`}}
@@ -45,4 +46,77 @@ function finishStory(){state.story[step]=true;state.firstRun=false;save();render
 function rankName(n){return n>=200?'伝説の探偵':n>=100?'名探偵':n>=50?'ベテラン探偵':n>=20?'一人前探偵':'見習い探偵'}
 function showNotebook(){render(`<div class="section-title"><h2>探偵手帳</h2><span class="muted">調査の記録</span></div><div class="grid">${steps.map((s,i)=>{let n=state.ranks[i]||0;return `<article class="card"><div class="bar"><b>Step ${i+1}　${s.short}</b><span class="rank">${rankName(n)}</span></div><p class="muted">累積正解 ${n}問　／　解決済み事件 ${n}件</p><div class="progress"><i style="width:${Math.min(100,n/2)}%"></i></div><button class="btn primary" style="margin-top:12px" onclick="startPractice(${i})">この章を特訓</button></article>`}).join('')}</div><section class="card" style="margin-top:18px"><h3>未解決事件（にがてパターン）</h3><div class="note-list">${Object.entries(state.patterns).filter(([,p])=>p.weak).map(([id,p])=>`<div class="weak"><span><b>${patternLabel(id)}</b><br><small>連続${p.wrong}回不正解</small></span><button class="btn" onclick="startPractice(${Number(id[1])-1})">特訓</button></div>`).join('')||'<div class="empty">まだ未解決事件はありません。間違いも大切な手がかりです。</div>'}</div></section><section class="card" style="margin-top:18px"><h3>称号</h3><p>${state.ranks.every(n=>n>=200)?'<span class="pill gold">殿堂入り探偵</span>':'5つの章すべてで伝説の探偵を目指そう。'}</p></section>`)}
 function patternLabel(id){return ({'s1-dot-range':'ドットプロット：範囲','s1-dot-max':'ドットプロット：最大値','s2-rep-mean':'平均値','s2-rep-median':'中央値','s2-rep-mode':'最頻値','s3-freq-class':'度数分布表：階級','s4-hist-peak':'ヒストグラム：山の頂上','s5-crit-sample':'結論：調査対象','s5-crit-scale':'結論：目盛り'})[id]||id}
++
+/* === 学習効果を支える出題・作成問題の拡張 === */
+function optionQuestion(base, choices, answerIndex){
+  let shuffled=shuffleQuestion({...base,choices,answer:answerIndex});
+  return shuffled;
+}
+function qDot(opts){
+  let d=dotData(),min=Math.min(...d),max=Math.max(...d);
+  let type=opts&&opts.pattern==='dot-range'?'range':opts&&opts.pattern==='dot-max'?'max':Math.random()<.5?'range':'max';
+  let answer=type==='range'?max-min:max;
+  return optionQuestion({pattern:'dot-'+type,text:'このドットプロットの'+(type==='range'?'範囲（最大値−最小値）':'最大値')+'はいくつですか。',visual:dotVisual(d),explain:type==='range'?'最大値'+max+'から最小値'+min+'をひいて、'+max+'−'+min+'='+answer+'です。':'いちばん右の点が最大値です。'+max+'でした。'},type==='range'?[answer,max+min,d.length,max-min+1]:[max,min,max-min,d.length],0);
+}
+function qRep(opts){
+  let force=opts&&opts.pattern||'',n=force==='rep-median-even'?6:(Math.random()<.5?5:6),other=[3,4,5,7,8],d=Array.from({length:n-2},function(){return other[Math.floor(Math.random()*other.length)]});
+  d.push(6,6);d.sort(function(a,b){return a-b});
+  let sum=d.reduce(function(a,b){return a+b},0),med=n%2?d[(n-1)/2]:(d[n/2-1]+d[n/2]),type=force==='rep-mean'?0:force==='rep-median'||force==='rep-median-even'?1:force==='rep-mode'?2:Math.floor(Math.random()*3),names=['平均値','中央値','最頻値'],ans=type===0?sum/n:type===1?med:6,pattern=['mean','median','mode'][type];
+  let choices=[ans,sum,d[0],d[n-1],ans+1,ans-1].filter(function(x,i,a){return x!==ans&&a.indexOf(x)===i&&x>=0}).slice(0,3);
+  return optionQuestion({pattern:'rep-'+pattern,text:'データ '+d.join('、')+' の'+names[type]+'はいくつですか。',explain:type===0?'合計'+sum+'を個数'+n+'で割ります。'+sum+'÷'+n+'='+ans+'です。':type===1?'大きさ順に並べたときの中央は、'+(n%2?'中央の1つ':'中央2つ')+'です。中央値は'+ans+'です。':'最も多く現れる値を見ます。6が2回現れているので、最頻値は6です。'},[ans].concat(choices),0);
+}
+function qFreq(opts){
+  let a=3+Math.floor(Math.random()*4),b=a+5,data=Array.from({length:12},function(){return Math.floor(Math.random()*20)+1}),mid=data.filter(function(x){return x>=a&&x<b}).length;
+  return optionQuestion({pattern:'freq-class',text:'階級「'+a+'以上'+b+'未満」に入るデータの度数はいくつですか。',visual:'<table class="table"><tr><th>データ</th></tr><tr><td>'+data.sort(function(x,y){return x-y}).join('、')+'</td></tr></table>',explain:a+'以上'+b+'未満の値だけを数えると'+mid+'個です。'+b+'は含まないことに注意します。'},[mid,data.length-mid,b-a,a+b],0);
+}
+function qHist(opts){
+  let force=opts&&opts.pattern||'';
+  if(force==='hist-shape'){
+    let c=[2,5,3,2,5,4];
+    return optionQuestion({pattern:'hist-shape',text:'このヒストグラムの分布の形として最も近いものはどれですか。',visual:histVisual(c),explain:'高い柱のまとまりが左右に2つあるので、山が2つある分布です。'},['山が1つ','山が2つ','ほぼ同じ高さ','右に向かって必ず増える'],1);
+  }
+  let c=histData(),max=Math.max.apply(null,c),idx=c.indexOf(max);
+  return optionQuestion({pattern:'hist-peak',text:'このヒストグラムで、最も度数が多い階級はどれですか。',visual:histVisual(c),explain:'いちばん高い柱は'+(idx*10)+'〜'+(idx*10+9)+'の階級です。山の頂上に注目します。'},c.map(function(_,i){return i*10+'〜'+(i*10+9)}),idx);
+}
+function qCrit(opts){
+  let force=opts&&opts.pattern||'',kind=force==='crit-scale'?'scale':force==='crit-sample'?'sample':Math.random()<.5?'sample':'scale';
+  return kind==='sample'?optionQuestion({pattern:'crit-sample',text:'「町全体の人は、みんな毎日1時間運動する」と結論づけました。調査対象がクラスの友達10人だけなら、どう考えるのが妥当ですか。',explain:'調査対象の人数や選び方を確認し、町全体について言えるかを慎重に考えます。'},['町全体と決めつけるには、調査対象がかたよっている可能性がある','10人調べたので必ず正しい','平均値だけ見れば十分','データは使わない'],0):optionQuestion({pattern:'crit-scale',text:'グラフの変化を実際より大きく見せないために、まず何を確認しますか。',explain:'目盛りの幅や省略線によって印象が変わることがあります。'},['目盛りの間隔や省略がないか','柱の色だけ','タイトルの長さ','データを見ない'],0);
+}
+function qDotBuild(){
+  let values=[3,4,5,6,7],counts=values.map(function(){return Math.floor(Math.random()*3)+1}),data=[];
+  values.forEach(function(v,i){for(let j=0;j<counts[i];j++)data.push(v)});
+  return {kind:'build-dot',pattern:'dot-build',data:data,values:values,targetCounts:counts,text:'データをドットプロットに表しましょう。数直線の数をタップして、同じ数の点を作ります。',explain:'同じ値のデータは、数直線の同じ場所に縦に積み上げます。'};
+}
+function makeQuestion(s){
+  let weak=Object.entries(state.patterns).filter(function(pair){return pair[1].weak&&pair[0].startsWith('s'+(s+1)+'-')});
+  if(weak.length&&Math.random()<.65)return makeQuestionByPattern(s,weak[Math.floor(Math.random()*weak.length)][0]);
+  let q=s===0&&Math.random()<.28?qDotBuild():[qDot,qRep,qFreq,qHist,qCrit][s]();
+  return q.kind==='build-dot'?q:shuffleQuestion(q);
+}
+function makeQuestionByPattern(s,id){
+  let q=[qDot,qRep,qFreq,qHist,qCrit][s]({pattern:id.slice(3)});
+  return q.kind==='build-dot'?q:shuffleQuestion(q);
+}
+let buildCounts=[];
+function buildDotsMarkup(q){
+  let min=Math.min.apply(null,q.values),max=Math.max.apply(null,q.values);
+  return '<div class="build-axis">'+q.values.map(function(v,i){let dots=Array.from({length:buildCounts[i]||0},function(){return '<i class="dot build-dot"></i>'}).join('');return '<div class="build-column"><div class="build-stack">'+dots+'</div><button class="axis-number" onclick="addBuildDot('+i+')">'+v+'</button></div>'}).join('')+'</div>';
+}
+function addBuildDot(index){if(answered)return;buildCounts[index]++;let el=document.querySelector('#buildDots');if(el)el.innerHTML=buildDotsMarkup(current);let status=document.querySelector('#buildStatus');if(status)status.textContent='点を置きました。もう一度タップすると、さらに1つ増えます。'}
+function checkBuild(){if(answered)return;let correct=current.targetCounts.every(function(n,i){return n===buildCounts[i]});if(correct){answer(0)}else{record(current.pattern,false);let status=document.querySelector('#buildStatus');if(status){let first=buildCounts.findIndex(function(n,i){return n!==current.targetCounts[i]});status.textContent=first<0?'点の数をもう一度確かめよう。':(buildCounts[first]>current.targetCounts[first]?'この数の点が少し多いようです。':'この数の点がまだ足りないようです。')}}}
+function renderQuiz(){
+  let q=current||queue[qi];current=q;let s=steps[step],total=mode==='story'?queue.length:1,fl=s.flavor[Math.floor(Math.random()*s.flavor.length)],body='';
+  if(q.kind==='build-dot'){buildCounts=q.values.map(function(){return 0});body='<div class="case-file"><b>作成ドリル</b><p>データ：'+q.data.join('、')+'</p></div><div id="buildDots" class="build-board">'+buildDotsMarkup(q)+'</div><p id="buildStatus" class="muted">数直線の数をタップして点を置こう。</p><button class="btn primary" onclick="checkBuild()">できた！判定する</button>'}
+  else body=(q.visual||'')+'<div class="choices">'+q.choices.map(function(c,i){return '<button class="choice" id="choice'+i+'" onclick="answer('+i+')">'+esc(c)+'</button>'}).join('')+'</div>';
+  render('<section class="card question"><div class="q-head"><span class="q-number">'+(mode==='story'?'第'+(step+1)+'章　'+(qi+1)+'/'+total:'事件ファイル No.'+String(state.caseNo).padStart(3,'0'))+'</span><span class="pill">'+s.short+'</span></div>'+(mode==='practice'?'<div class="case-file"><b>'+fl+'</b>から届いた未解決事件。データを手がかりに調査しよう。</div>':'')+'<h2 class="q-title">'+q.text+'</h2>'+body+'<div id="feedback"></div></section>');
+}
+function makeMini(s){
+  if(s===0){let q=qDot({pattern:'dot-range'});return optionQuestion({pattern:'mini-spread',text:'この事件で、記録の散らばりを比べるときに使える値はどれですか。',explain:'最大値と最小値の差である範囲を見ると、データがどれくらい広がっているか分かります。'},['範囲','最頻値','階級の幅','調査人数'],0)}
+  if(s===1)return optionQuestion({pattern:'mini-representative',text:'靴屋が「一番多く売れたサイズ」を知りたいとき、どの代表値が役立ちますか。',explain:'最も多く現れる値を表す最頻値は、よく売れたサイズを知るのに向いています。'},['最頻値','平均値','中央値','範囲'],0);
+  if(s===2)return optionQuestion({pattern:'mini-class',text:'「10分以上20分未満」という階級に、20分ちょうどのデータは入りますか。',explain:'「未満」はその数を含みません。20分ちょうどは次の階級に入ります。'},['入らない','入る','データが多いと入る','平均値によって決まる'],0);
+  if(s===3)return optionQuestion({pattern:'mini-shape',text:'ヒストグラムの柱と柱の間にすき間をあけないのはなぜですか。',explain:'ヒストグラムは連続した数値の区間を表すため、柱をつなげて分布の形を読み取ります。'},['分布の形を見やすくするため','色をきれいに見せるため','棒グラフと同じにするため','度数を増やすため'],0);
+  return qCrit({pattern:'crit-sample'});
+}
+function renderMini(){answered=false;let q=shuffleQuestion(makeMini(step));current=q;render('<section class="card question"><div class="eyebrow">章末ミニ問題</div><h2 class="q-title">'+q.text+'</h2><div class="choices">'+q.choices.map(function(c,i){return '<button class="choice" onclick="miniAnswer('+i+')">'+esc(c)+'</button>'}).join('')+'</div><div id="feedback"></div></section>')}
+function miniAnswer(i){if(answered)return;answered=true;let q=current,ok=i===q.answer;document.querySelectorAll('.choice').forEach(function(b,n){if(n===q.answer)b.classList.add('correct');if(n===i&&!ok)b.classList.add('wrong')});record(q.pattern,ok);let f=document.querySelector('#feedback');f.className='feedback '+(ok?'ok':'bad');f.innerHTML='<b>'+(ok?'正解！':'考え方を確認しよう。')+'</b><p>'+q.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>'}
 renderHome();
