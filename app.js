@@ -32,14 +32,15 @@ function loadState(){
     titles:read(STORAGE.titles,old.titles||[]),
     caseNo:read(STORAGE.caseNo,old.caseNo||0)};
 }
+// localStorageは同期処理なので、複数キーへ何度も書き込むと
+// タブレットで画面が一瞬止まりやすい。状態全体を1キーにまとめる。
 function saveState(){
-  localStorage.setItem(STORAGE.legacy,JSON.stringify(state));
-  localStorage.setItem(STORAGE.story,JSON.stringify(state.story));
-  localStorage.setItem(STORAGE.ranks,JSON.stringify(state.ranks));
-  state.ranks.forEach(function(value,index){localStorage.setItem('detective_rank_step'+(index+1),JSON.stringify(value))});
-  localStorage.setItem(STORAGE.patterns,JSON.stringify(state.patterns));
-  localStorage.setItem(STORAGE.titles,JSON.stringify(state.titles));
-  localStorage.setItem(STORAGE.caseNo,JSON.stringify(state.caseNo));
+  try{
+    localStorage.setItem(STORAGE.legacy,JSON.stringify(state));
+  }catch(error){
+    // 保存できない環境でも、学習画面自体は止めない。
+    console.warn('学習記録を保存できませんでした。',error);
+  }
 }
 function esc(value){return String(value).replace(/[&<>"']/g,function(ch){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]})}
 function rand(min,max){return Math.floor(Math.random()*(max-min+1))+min}
@@ -53,7 +54,12 @@ function choice(items){return items[rand(0,items.length-1)]}
 function header(){
   return '<header class="top"><div class="brand"><div class="badge">⌕</div><div><h1>町のデータ探偵団</h1><small>データを見て、考えて、確かな結論を</small></div></div><div class="top-actions"><button class="btn" onclick="showNotebook()">探偵手帳</button><button class="btn ghost" onclick="goHome()">トップ</button></div></header>';
 }
-function render(html){document.querySelector('#app').innerHTML=header()+html;window.scrollTo({top:0,behavior:'smooth'})}
+function render(html){
+  document.querySelector('#app').innerHTML=header()+html;
+  // 画面更新ごとのsmoothスクロールは、連続タップ時にアニメーションが
+  // 重なって反応が遅く感じられるため、即時移動にする。
+  window.scrollTo(0,0);
+}
 function goHome(){mode='home';renderHome()}
 
 function startStory(){mode='story';renderChapters()}
@@ -239,7 +245,7 @@ function checkBuild(){
   const ok=current.targetCounts.every(function(n,i){return n===buildCounts[i]});
   if(ok){submitAnswer(true);return}
   if(mode==='practice')practiceAttempts++;
-  record(current.pattern,false);
+  record(current.pattern,false);saveState();
   const first=buildCounts.findIndex(function(n,i){return n!==current.targetCounts[i]});
   document.querySelector('#buildStatus').textContent=buildCounts[first]>current.targetCounts[first]?'この数の点が少し多いようです。データの数を数え直そう。':'この数の点がまだ足りないようです。データの数を数え直そう。';
 }
@@ -261,6 +267,7 @@ function submitAnswer(ok){
   if(answered)return;answered=true;record(current.pattern,ok);
   if(mode==='practice')practiceAttempts++;
   if(!ok){
+    saveState();
     const feedback=document.querySelector('#feedback');feedback.className='feedback bad';
     feedback.innerHTML='<b>おしい。まだ次の事件には進めません。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="retryCurrent()">同じ問題にもう一度挑戦</button>';
     return;
@@ -285,7 +292,7 @@ function renderPracticeResult(){
 function record(pattern,ok){
   const key='s'+(step+1)+'-'+pattern,p=state.patterns[key]||{wrong:0,right:0,weak:false};
   if(ok){p.right++;p.wrong=0;if(p.right>=2)p.weak=false}else{p.wrong++;p.right=0;if(p.wrong>=3)p.weak=true}
-  state.patterns[key]=p;saveState();
+  state.patterns[key]=p;
 }
 
 function miniQuestion(index){
@@ -305,7 +312,7 @@ function renderMiniCurrent(){
   render('<section class="card question"><div class="eyebrow">章末ミニ問題</div><h2 class="q-title">'+current.text+'</h2><div class="choices">'+current.choices.map(function(c,i){return '<button class="choice" onclick="answerMini('+i+')">'+esc(c)+'</button>'}).join('')+'</div><div id="feedback"></div></section>');
 }
 function answerMini(index){
-  if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(current.pattern,ok);
+  if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(current.pattern,ok);saveState();
   const feedback=document.querySelector('#feedback');
   if(!ok){feedback.className='feedback bad';feedback.innerHTML='<b>おしい。章を解決するには正解が必要です。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="renderMiniCurrent()">もう一度考える</button>';return}
   feedback.className='feedback ok';feedback.innerHTML='<b>正解！</b><p>'+current.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>';
