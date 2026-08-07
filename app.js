@@ -1,8 +1,9 @@
-const KEY='detective_data_progress_v1';
+const KEY='detective_data_progress_v1',STORAGE={story:'detective_story_progress',ranks:'detective_rank_steps',patterns:'detective_weak_patterns',titles:'detective_titles'};
 const defaultState=()=>({story:[false,false,false,false,false],firstRun:true,ranks:[0,0,0,0,0],patterns:{},titles:[],caseNo:0,solved:0});
 let state=load(), screen='home', mode=null, step=0, queue=[], qi=0, answered=false, current=null;
-function load(){try{return {...defaultState(),...JSON.parse(localStorage.getItem(KEY)||'{}')}}catch{return defaultState()}}
-function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+function readStore(key,fallback){try{let value=localStorage.getItem(key);return value===null?fallback:JSON.parse(value)}catch{return fallback}}
+function load(){let old=readStore(KEY,{});return {...defaultState(),...old,story:readStore(STORAGE.story,old.story||defaultState().story),ranks:readStore(STORAGE.ranks,old.ranks||defaultState().ranks),patterns:readStore(STORAGE.patterns,old.patterns||{}),titles:readStore(STORAGE.titles,old.titles||[])}}
+function save(){localStorage.setItem(KEY,JSON.stringify(state));localStorage.setItem(STORAGE.story,JSON.stringify(state.story));localStorage.setItem(STORAGE.ranks,JSON.stringify(state.ranks));localStorage.setItem(STORAGE.patterns,JSON.stringify(state.patterns));localStorage.setItem(STORAGE.titles,JSON.stringify(state.titles))}
 const steps=[
  {title:'散らばりの事件',short:'ドットプロット',icon:'●',intro:'6年1組のハンドボール投げの記録。去年より強くなったというウワサは本当か、散らばりから調べよう。',flavor:['学校の記録','町内運動会の記録','スポーツ大会の記録']},
  {title:'代表値の事件',short:'平均・中央値・最頻値',icon:'Ⅲ',intro:'商店街の靴屋さんから相談がきた。どのサイズを多く仕入れるべきか、3つの代表値を使い分けよう。',flavor:['靴屋の相談','給食の記録','図書館の貸出記録']},
