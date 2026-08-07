@@ -2,7 +2,7 @@
 // 町のデータ探偵団 — 学習・練習・進捗を一体で管理するアプリ
 const STORAGE={legacy:'detective_data_progress_v1',story:'detective_story_progress',ranks:'detective_rank_steps',patterns:'detective_weak_patterns',titles:'detective_titles',caseNo:'detective_case_no'};
 const freshState=()=>({story:[false,false,false,false,false],ranks:[0,0,0,0,0],patterns:{},titles:[],caseNo:0,solved:0});
-let state=loadState(),mode='home',step=0,queue=[],questionIndex=0,current=null,answered=false,forcedPracticePattern=null,buildCounts=[];
+let state=loadState(),mode='home',step=0,queue=[],questionIndex=0,practiceIndex=0,current=null,answered=false,forcedPracticePattern=null,buildCounts=[];
 
 const STEPS=[
   {title:'散らばりの事件',short:'ドットプロット',icon:'●',intro:'6年1組のハンドボール投げの記録。去年より強くなったというウワサは本当か、散らばりから調べよう。',flavor:['学校の記録','町内運動会の記録','スポーツ大会の記録']},
@@ -13,11 +13,14 @@ const STEPS=[
 ];
 
 function read(key,fallback){try{const value=localStorage.getItem(key);return value===null?fallback:JSON.parse(value)}catch{return fallback}}
+function loadRanks(fallback){
+  return fallback.map(function(value,index){return read('detective_rank_step'+(index+1),value)});
+}
 function loadState(){
   const old=read(STORAGE.legacy,{});
   return {...freshState(),...old,
     story:read(STORAGE.story,old.story||freshState().story),
-    ranks:read(STORAGE.ranks,old.ranks||freshState().ranks),
+    ranks:loadRanks(read(STORAGE.ranks,old.ranks||freshState().ranks)),
     patterns:read(STORAGE.patterns,old.patterns||{}),
     titles:read(STORAGE.titles,old.titles||[]),
     caseNo:read(STORAGE.caseNo,old.caseNo||0)};
@@ -26,6 +29,7 @@ function saveState(){
   localStorage.setItem(STORAGE.legacy,JSON.stringify(state));
   localStorage.setItem(STORAGE.story,JSON.stringify(state.story));
   localStorage.setItem(STORAGE.ranks,JSON.stringify(state.ranks));
+  state.ranks.forEach(function(value,index){localStorage.setItem('detective_rank_step'+(index+1),JSON.stringify(value))});
   localStorage.setItem(STORAGE.patterns,JSON.stringify(state.patterns));
   localStorage.setItem(STORAGE.titles,JSON.stringify(state.titles));
   localStorage.setItem(STORAGE.caseNo,JSON.stringify(state.caseNo));
@@ -69,7 +73,7 @@ function showPracticeSelect(){
   render('<div class="section-title"><h2>名探偵への道</h2><span class="muted">鍛えたい章を選ぼう</span></div><div class="steps">'+STEPS.map(function(s,i){const n=state.ranks[i]||0;return '<button class="card step-card" onclick="startPractice('+i+')"><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><span class="rank">'+rankName(n)+'</span><small class="muted">正解 '+n+'問</small></button>'}).join('')+'</div>');
 }
 function startPractice(index,pattern){
-  mode='practice';step=index;forcedPracticePattern=pattern||null;answered=false;nextPractice();
+  mode='practice';step=index;practiceIndex=0;forcedPracticePattern=pattern||null;answered=false;nextPractice();
 }
 function nextPractice(){
   state.caseNo++;saveState();current=getQuestion(step,forcedPracticePattern);answered=false;renderQuiz();
@@ -103,7 +107,7 @@ function qDotMin(){const d=dotData(),answer=Math.min.apply(null,d);return makeMC
 function qDotRange(){const d=dotData(),min=Math.min.apply(null,d),max=Math.max.apply(null,d),answer=max-min;return makeMCQ('dot-range','このドットプロットの範囲（最大値−最小値）はいくつですか。',[answer,max+min,d.length,answer+1],'範囲は、最大値'+max+'から最小値'+min+'をひいた値です。'+max+'−'+min+'='+answer+'。',dotVisual(d))}
 function qDotSpread(){
   const a=[3,4,5,5,5,6,7],b=[1,2,4,5,6,8,9];
-  return makeMCQ('dot-compare-spread','記録の散らばりがより大きいのは、どちらですか。',['A','B','同じ','データの個数が多い方'],'Aの範囲は4、Bの範囲は8です。範囲が大きいBの方が散らばりが大きいといえます。','<div class="chart"><b>A</b>'+dotVisual(a)+'<b>B</b>'+dotVisual(b)+'</div>');
+  return makeMCQ('dot-compare-spread','記録の散らばりがより大きいのは、どちらですか。',['A','B','同じ','データの個数が多い方'],1,'Aの範囲は4、Bの範囲は8です。範囲が大きいBの方が散らばりが大きいといえます。','<div class="chart"><b>A</b>'+dotVisual(a)+'<b>B</b>'+dotVisual(b)+'</div>');
 }
 function qDotBuild(){
   const values=[3,4,5,6,7],counts=values.map(function(){return rand(1,3)}),data=[];
@@ -206,7 +210,7 @@ function getQuestion(stepIndex,forcedPattern){
 function renderQuiz(){
   const q=current||(mode==='story'?queue[questionIndex]:null),s=STEPS[step];
   current=q;answered=false;
-  const number=mode==='story'?'第'+(step+1)+'章　'+(questionIndex+1)+'/'+queue.length:'事件ファイル No.'+String(state.caseNo).padStart(3,'0');
+  const number=mode==='story'?'第'+(step+1)+'章　'+(questionIndex+1)+'/'+queue.length:'事件ファイル No.'+String(state.caseNo).padStart(3,'0')+'　（'+(practiceIndex+1)+'/5問）';
   const flavor=choice(s.flavor);
   let body='';
   if(q.kind==='build-dot'){
@@ -218,10 +222,13 @@ function renderQuiz(){
   render('<section class="card question"><div class="q-head"><span class="q-number">'+number+'</span><span class="pill">'+s.short+'</span></div>'+(mode==='practice'?'<div class="case-file"><b>'+flavor+'</b>から届いた未解決事件。データを手がかりに調査しよう。</div>':'')+'<h2 class="q-title">'+q.text+'</h2>'+body+'<div id="feedback"></div></section>');
 }
 function buildDotsMarkup(q){
-  return '<div class="build-axis">'+q.values.map(function(value,index){return '<div class="build-column"><div class="build-stack">'+Array.from({length:buildCounts[index]||0},function(){return '<i class="dot build-dot"></i>'}).join('')+'</div><button class="axis-number" onclick="addBuildDot('+index+')">'+value+'</button></div>'}).join('')+'</div>';
+  return '<div class="build-axis">'+q.values.map(function(value,index){return '<div class="build-column"><div class="build-stack">'+Array.from({length:buildCounts[index]||0},function(){return '<i class="dot build-dot"></i>'}).join('')+'</div><div class="build-controls"><button class="axis-number minus" onclick="removeBuildDot('+index+')">−</button><span class="axis-number value">'+value+'</span><button class="axis-number" onclick="addBuildDot('+index+')">＋</button></div></div>'}).join('')+'</div>';
 }
 function addBuildDot(index){
   if(answered)return;buildCounts[index]++;document.querySelector('#buildDots').innerHTML=buildDotsMarkup(current);document.querySelector('#buildStatus').textContent='点を置きました。足りない数・多すぎる数がないか確かめよう。';
+}
+function removeBuildDot(index){
+  if(answered||buildCounts[index]===0)return;buildCounts[index]--;document.querySelector('#buildDots').innerHTML=buildDotsMarkup(current);document.querySelector('#buildStatus').textContent='点を1つ減らしました。データの数と見比べよう。';
 }
 function checkBuild(){
   if(answered)return;
@@ -264,7 +271,10 @@ function submitAnswer(ok){
 }
 function afterAnswer(){
   if(mode==='story'){if(questionIndex<queue.length-1){questionIndex++;current=queue[questionIndex];renderQuiz()}else renderMini();return}
-  nextPractice();
+  if(practiceIndex<4){practiceIndex++;nextPractice()}else renderPracticeResult();
+}
+function renderPracticeResult(){
+  render('<section class="result-card card"><div style="font-size:4rem">🕵️</div><div class="eyebrow">5問セッション完了</div><h2>'+STEPS[step].short+'の調査結果</h2><p>5問の調査を終えました。間違えた問題も、次の出題で手がかりとして活用されます。</p><div class="case-file"><b>現在のランク</b><p class="rank">'+rankName(state.ranks[step])+'　／　累積正解 '+state.ranks[step]+'問</p></div><button class="btn primary" onclick="startPractice('+step+')">もう5問調べる</button><button class="btn ghost" onclick="showPracticeSelect()">章選択へ</button><button class="btn" onclick="showNotebook()">探偵手帳を見る</button></section>');
 }
 function record(pattern,ok){
   const key='s'+(step+1)+'-'+pattern,p=state.patterns[key]||{wrong:0,right:0,weak:false};
@@ -315,5 +325,13 @@ function showNotebook(){
   const chapters=STEPS.map(function(s,i){const n=state.ranks[i]||0;return '<article class="card"><div class="bar"><b>Step '+(i+1)+'　'+s.short+'</b><span class="rank">'+rankName(n)+'</span></div><p class="muted">累積正解 '+n+'問　／　解決済み事件 '+n+'件</p><div class="progress"><i style="width:'+Math.min(100,n/2)+'%"></i></div><button class="btn primary" style="margin-top:12px" onclick="startPractice('+i+')">この章を特訓</button></article>'}).join('');
   const weak=Object.entries(state.patterns).filter(function(pair){return pair[1].weak}).map(function(pair){const id=pair[0],p=pair[1],index=Number(id[1])-1;return '<div class="weak"><span><b>'+patternLabel(id)+'</b><br><small>連続'+p.wrong+'回不正解</small></span><button class="btn" data-step="'+index+'" data-pattern="'+id.slice(3)+'" onclick="startWeakPractice(this.dataset.step,this.dataset.pattern)">特訓</button></div>'}).join('')||'<div class="empty">まだ未解決事件はありません。間違いも大切な手がかりです。</div>';
   render('<div class="section-title"><h2>探偵手帳</h2><span class="muted">調査の記録</span></div><div class="grid">'+chapters+'</div><section class="card" style="margin-top:18px"><h3>未解決事件（にがてパターン）</h3><div class="note-list">'+weak+'</div></section><section class="card" style="margin-top:18px"><h3>称号</h3><p>'+(state.titles.includes('殿堂入り探偵')?'<span class="pill gold">殿堂入り探偵</span>':'5つの章すべてで伝説の探偵を目指そう。')+'</p></section>');
+}
+function renderHome(){
+  const cleared=state.story.filter(Boolean).length;
+  const chapters=STEPS.map(function(s,i){
+    const open=i===0||state.story[i-1];
+    return '<button class="card step-card '+(!open?'locked':'')+'" '+(open?'onclick="openStory('+i+')"':'disabled')+'><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><span class="'+(state.story[i]?'pill':'muted')+'">'+(state.story[i]?'解決済み':open?'この事件へ':'🔒 前の事件から')+'</span></button>';
+  }).join('');
+  render('<section class="hero"><div class="eyebrow">CASE FILE 000　データ活用調査本部</div><h2>町のデータ探偵団</h2><p>町に届く「本当かな？」を、データという手がかりで解決しよう。5つの事件を調べながら、データの見方を身につけます。</p><div class="top-actions"><button class="btn primary" onclick="startStory()">'+(cleared?'物語をつづける':'基本学習をはじめる')+'</button><button class="btn gold" onclick="showPracticeSelect()">名探偵への道</button></div></section><div class="grid"><article class="card mode-card"><div><div class="mode-icon">📖</div><h3>基本学習モード</h3><p class="muted">物語を追いながら、5つの事件を順番に解決します。</p></div><span class="pill">'+cleared+'/5章クリア</span></article><article class="card mode-card"><div><div class="mode-icon">🕵️</div><h3>練習モード</h3><p class="muted">名探偵への道は最初から挑戦できます。5問ごとに結果を確認します。</p></div><span class="pill gold">5問セッション</span></article></div><div class="section-title"><h2>事件ファイル</h2><span class="muted">カードを押して調査へ</span></div><div class="steps">'+chapters+'</div>');
 }
 renderHome();
