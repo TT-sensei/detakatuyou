@@ -188,7 +188,7 @@ function qHistShape(){
 }
 function qHistSpread(){
   const a=[2,4,8,4,2],b=[5,5,5,5,5];
-  return makeMCQ('hist-spread','散らばりがより大きいと考えられるのはどちらの分布ですか。',['A','B','同じ','度数が多い方'],'Aは中央に集まり、Bは全体に広がっています。横方向の広がりにも注目します。','<div class="chart"><b>A</b>'+histVisual(a)+'<b>B</b>'+histVisual(b)+'</div>');
+  return makeMCQ('hist-spread','散らばりがより大きいと考えられるのはどちらの分布ですか。',['A','B','同じ','度数が多い方'],1,'Aは中央に集まり、Bは全体に広がっています。横方向の広がりにも注目します。','<div class="chart"><b>A</b>'+histVisual(a)+'<b>B</b>'+histVisual(b)+'</div>');
 }
 function qHistRule(){
   return makeMCQ('hist-rule','ヒストグラムの柱と柱の間にすき間をあけないのはなぜですか。',['連続した区間の分布の形を見やすくするため','色をきれいに見せるため','度数を増やすため','棒グラフと同じにするため'],'ヒストグラムは連続した値を階級で区切ります。柱をつなげると分布の形が読み取りやすくなります。');
