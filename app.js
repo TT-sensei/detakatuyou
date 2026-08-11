@@ -324,7 +324,7 @@ function renderMiniCurrent(){
   render('<section class="card question"><div class="eyebrow">章末ミニ問題</div><h2 class="q-title">'+current.text+'</h2><div class="choices">'+current.choices.map(function(c,i){return '<button class="choice" onclick="answerMini('+i+')">'+esc(c)+'</button>'}).join('')+'</div><div id="feedback"></div></section>');
 }
 function answerMini(index){
-  if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(current.pattern,ok);saveState();
+  if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(MINI_TO_PATTERN[current.pattern]||current.pattern,ok);saveState();
   const feedback=document.querySelector('#feedback');
   if(!ok){feedback.className='feedback bad';feedback.innerHTML='<b>おしい。章を解決するには正解が必要です。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="renderMiniCurrent()">もう一度考える</button>';return}
   feedback.className='feedback ok';feedback.innerHTML='<b>正解！</b><p>'+current.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>';
