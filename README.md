@@ -74,3 +74,7 @@ detakatuyou/
 
 授業や家庭学習で利用するための教材です。
 問題文や構成を改変して、学級の実態に合わせて利用できます。
+
+## 公開ページ
+
+[GitHub Pagesで開く](https://tt-sensei.github.io/detakatuyou/)
