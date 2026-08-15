@@ -1,8 +1,21 @@
 
 // 町のデータ探偵団 — 学習・練習・進捗を一体で管理するアプリ
 const STORAGE={legacy:'detective_data_progress_v1',story:'detective_story_progress',ranks:'detective_rank_steps',patterns:'detective_weak_patterns',titles:'detective_titles',caseNo:'detective_case_no'};
-const freshState=()=>({story:[false,false,false,false,false],ranks:[0,0,0,0,0],patterns:{},titles:[],caseNo:0,solved:0});
-let state=loadState(),mode='home',step=0,queue=[],questionIndex=0,practiceIndex=0,practiceAttempts=0,current=null,answered=false,forcedPracticePattern=null,buildCounts=[];
+const BADGE_BASE='https://tt-sensei.github.io/edu-assets/assets/badges/common/';
+const BADGES=[
+  {id:'first-step',name:'はじめの一歩',condition:'最初の事件を調査する',image:'first-step',test:s=>s.story[0]||s.solved>0},
+  {id:'explorer',name:'事件ファイル探検家',condition:'3つの事件を解決する',image:'explorer',test:s=>s.story.filter(Boolean).length>=3},
+  {id:'mission-complete',name:'全事件解決',condition:'5つの事件をすべて解決する',image:'mission-complete',test:s=>s.story.every(Boolean)},
+  {id:'practice-master',name:'練習の達人',condition:'練習問題に10問正解する',image:'practice-master',test:s=>s.solved>=10},
+  {id:'problem-solver',name:'問題解決マスター',condition:'練習問題に30問正解する',image:'problem-solver',test:s=>s.solved>=30},
+  {id:'level-up',name:'ランクアップ',condition:'いずれかの章で一人前探偵になる',image:'level-up',test:s=>s.ranks.some(n=>n>=20)},
+  {id:'mastery',name:'名探偵への道',condition:'いずれかの章でベテラン探偵になる',image:'mastery',test:s=>s.ranks.some(n=>n>=50)},
+  {id:'deep-thinker',name:'深く考える探偵',condition:'5つの章末ミニ問題に挑戦する',image:'deep-thinker',test:s=>s.story.filter(Boolean).length>=5},
+  {id:'comeback',name:'カムバック探偵',condition:'苦手パターンを2問連続で正解する',image:'comeback',test:s=>Object.values(s.patterns).some(p=>p.right>=2)},
+  {id:'accuracy',name:'正確な目',condition:'練習問題に50問正解する',image:'accuracy',test:s=>s.solved>=50}
+];
+const freshState=()=>({story:[false,false,false,false,false],ranks:[0,0,0,0,0],patterns:{},titles:[],caseNo:0,solved:0,badges:{}});
+let state=loadState(),mode='home',step=0,queue=[],questionIndex=0,practiceIndex=0,practiceAttempts=0,current=null,answered=false,forcedPracticePattern=null,buildCounts=[],lastBadgeUnlocks=[];
 
 const STEPS=[
   {title:'散らばりの事件',short:'ドットプロット',icon:'●',intro:'6年1組のハンドボール投げの記録。去年より強くなったというウワサは本当か、散らばりから調べよう。',flavor:['学校の記録','町内運動会の記録','スポーツ大会の記録']},
@@ -32,17 +45,34 @@ function loadState(){
     ranks:Array.isArray(old.ranks)?old.ranks:loadRanks(read(STORAGE.ranks,freshState().ranks)),
     patterns:old.patterns&&typeof old.patterns==='object'?old.patterns:read(STORAGE.patterns,{}),
     titles:Array.isArray(old.titles)?old.titles:read(STORAGE.titles,[]),
-    caseNo:Number.isFinite(old.caseNo)?old.caseNo:read(STORAGE.caseNo,0)};
+    caseNo:Number.isFinite(old.caseNo)?old.caseNo:read(STORAGE.caseNo,0),
+    badges:old.badges&&typeof old.badges==='object'?old.badges:{}};
 }
 // localStorageは同期処理なので、複数キーへ何度も書き込むと
 // タブレットで画面が一瞬止まりやすい。状態全体を1キーにまとめる。
 function saveState(){
   try{
+    lastBadgeUnlocks=syncBadges();
     localStorage.setItem(STORAGE.legacy,JSON.stringify(state));
   }catch(error){
     // 保存できない環境でも、学習画面自体は止めない。
     console.warn('学習記録を保存できませんでした。',error);
   }
+}
+function syncBadges(){
+  const unlocked=[];
+  if(!state.badges||typeof state.badges!=='object')state.badges={};
+  BADGES.forEach(function(badge){
+    if(!state.badges[badge.id]&&badge.test(state)){
+      state.badges[badge.id]={earnedAt:new Date().toISOString()};
+      unlocked.push(badge);
+    }
+  });
+  return unlocked;
+}
+function badgeNotice(badges){
+  if(!badges||!badges.length)return '';
+  return '<div class="badge-notice"><b>🏅 バッジを獲得！</b><span>'+badges.map(function(b){return b.name}).join('・')+'</span><button class="btn" onclick="showBadges()">コレクションを見る</button></div>';
 }
 function esc(value){return String(value).replace(/[&<>"']/g,function(ch){return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[ch]})}
 function rand(min,max){return Math.floor(Math.random()*(max-min+1))+min}
@@ -54,7 +84,8 @@ function shuffle(items){const copy=items.slice();for(let i=copy.length-1;i>0;i--
 function choice(items){return items[rand(0,items.length-1)]}
 
 function header(){
-  return '<header class="top"><div class="brand"><div class="badge">⌕</div><div><h1>町のデータ探偵団</h1><small>データを見て、考えて、確かな結論を</small></div></div><div class="top-actions"><button class="btn" onclick="showNotebook()">探偵手帳</button><button class="btn ghost" onclick="goHome()">トップ</button></div></header>';
+  const earned=Object.keys(state.badges||{}).length;
+  return '<header class="top"><div class="brand"><div class="badge">⌕</div><div><h1>町のデータ探偵団</h1><small>データを見て、考えて、確かな結論を</small></div></div><div class="top-actions"><button class="btn" onclick="showBadges()">🏅 バッジ '+earned+'/'+BADGES.length+'</button><button class="btn" onclick="showNotebook()">探偵手帳</button><button class="btn ghost" onclick="goHome()">トップ</button></div></header>';
 }
 function render(html){
   document.querySelector('#app').innerHTML=header()+html;
@@ -292,7 +323,7 @@ function submitAnswer(ok){
     saveState();
   }
   const feedback=document.querySelector('#feedback');feedback.className='feedback ok';
-  feedback.innerHTML='<b>正解！</b>'+rankUp+'<p>'+current.explain+'</p><button class="btn primary" onclick="afterAnswer()">'+(mode==='story'?(questionIndex<queue.length-1?'次の問題へ':'章末ミニ問題へ'):'次の事件を調べる')+'</button>';
+  feedback.innerHTML='<b>正解！</b>'+rankUp+badgeNotice(lastBadgeUnlocks)+'<p>'+current.explain+'</p><button class="btn primary" onclick="afterAnswer()">'+(mode==='story'?(questionIndex<queue.length-1?'次の問題へ':'章末ミニ問題へ'):'次の事件を調べる')+'</button>';
 }
 function afterAnswer(){
   if(mode==='story'){if(questionIndex<queue.length-1){questionIndex++;current=queue[questionIndex];renderQuiz()}else renderMini();return}
@@ -327,12 +358,12 @@ function answerMini(index){
   if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(MINI_TO_PATTERN[current.pattern]||current.pattern,ok);saveState();
   const feedback=document.querySelector('#feedback');
   if(!ok){feedback.className='feedback bad';feedback.innerHTML='<b>おしい。章を解決するには正解が必要です。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="renderMiniCurrent()">もう一度考える</button>';return}
-  feedback.className='feedback ok';feedback.innerHTML='<b>正解！</b><p>'+current.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>';
+  feedback.className='feedback ok';feedback.innerHTML='<b>正解！</b>'+badgeNotice(lastBadgeUnlocks)+'<p>'+current.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>';
 }
 function finishStory(){
   state.story[step]=true;saveState();
-  if(step===4){render('<section class="result-card card"><div style="font-size:4rem">🏆</div><div class="eyebrow">全事件解決</div><h2>事件解決レポート</h2><p>5つの事件を通して、データを整理し、特徴を見つけ、根拠を確かめる力を身につけました。</p><div class="case-file"><b>探偵団の結論</b><p>平均値だけで決めつけず、分布の形、中央値、調査対象、目盛りにも目を向けると、より妥当な判断ができます。</p></div><button class="btn gold" onclick="showPracticeSelect()">名探偵への道へ</button><button class="btn ghost" onclick="showNotebook()">探偵手帳を見る</button></section>');return}
-  render('<section class="result-card card"><div style="font-size:4rem">🗂️</div><div class="eyebrow">事件解決</div><h2>'+STEPS[step].title+'を解決！</h2><p>手がかりカード「'+STEPS[step].short+'」を探偵手帳に保存しました。</p><button class="btn primary" onclick="openStory('+(step+1)+')">次の事件へ</button></section>');
+  if(step===4){render('<section class="result-card card"><div style="font-size:4rem">🏆</div><div class="eyebrow">全事件解決</div><h2>事件解決レポート</h2>'+badgeNotice(lastBadgeUnlocks)+'<p>5つの事件を通して、データを整理し、特徴を見つけ、根拠を確かめる力を身につけました。</p><div class="case-file"><b>探偵団の結論</b><p>平均値だけで決めつけず、分布の形、中央値、調査対象、目盛りにも目を向けると、より妥当な判断ができます。</p></div><button class="btn gold" onclick="showPracticeSelect()">名探偵への道へ</button><button class="btn ghost" onclick="showNotebook()">探偵手帳を見る</button></section>');return}
+  render('<section class="result-card card"><div style="font-size:4rem">🗂️</div><div class="eyebrow">事件解決</div><h2>'+STEPS[step].title+'を解決！</h2>'+badgeNotice(lastBadgeUnlocks)+'<p>手がかりカード「'+STEPS[step].short+'」を探偵手帳に保存しました。</p><button class="btn primary" onclick="openStory('+(step+1)+')">次の事件へ</button></section>');
 }
 function rankName(n){return n>=200?'伝説の探偵':n>=100?'名探偵':n>=50?'ベテラン探偵':n>=20?'一人前探偵':'見習い探偵'}
 function patternLabel(id){
@@ -346,6 +377,15 @@ function patternLabel(id){
   return labels[id]||id;
 }
 function startWeakPractice(index,pattern){startPractice(Number(index),pattern)}
+function showBadges(){
+  if(syncBadges().length)localStorage.setItem(STORAGE.legacy,JSON.stringify(state));
+  const earned=Object.keys(state.badges||{}).length;
+  const cards=BADGES.map(function(badge){
+    const record=state.badges[badge.id],date=record&&record.earnedAt?new Date(record.earnedAt).toLocaleDateString('ja-JP'):'';
+    return '<article class="badge-card '+(record?'earned':'locked')+'"><img src="'+BADGE_BASE+badge.image+'/badge.png" alt="'+(record?badge.name:'未獲得バッジ')+'"><div><h3>'+badge.name+'</h3><p>'+badge.condition+'</p><small>'+(record?'獲得日：'+date:'まだ未獲得')+'</small></div></article>';
+  }).join('');
+  render('<div class="section-title"><h2>バッジコレクション</h2><span class="pill">'+earned+'/'+BADGES.length+' 獲得</span></div><p class="muted">事件を解決したり、練習を重ねたりするとバッジが増えていきます。</p><div class="badge-grid">'+cards+'</div><button class="btn ghost" onclick="goHome()">トップへ戻る</button>');
+}
 function exportProgress(){
   const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),link=document.createElement('a');
   link.href=url;link.download='町のデータ探偵団_学習記録.json';link.click();setTimeout(function(){URL.revokeObjectURL(url)},1000);
@@ -365,6 +405,6 @@ function renderHome(){
     const open=i===0||state.story[i-1];
     return '<button class="card step-card '+(!open?'locked':'')+'" '+(open?'onclick="openStory('+i+')"':'disabled')+'><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><span class="'+(state.story[i]?'pill':'muted')+'">'+(state.story[i]?'解決済み':open?'この事件へ':'🔒 前の事件から')+'</span></button>';
   }).join('');
-  render('<section class="hero"><div class="eyebrow">CASE FILE 000　データ活用調査本部</div><h2>町のデータ探偵団</h2><p>町に届く「本当かな？」を、データという手がかりで解決しよう。5つの事件を調べながら、データの見方を身につけます。</p><div class="top-actions"><button class="btn primary" onclick="startStory()">'+(cleared?'物語をつづける':'基本学習をはじめる')+'</button><button class="btn gold" onclick="showPracticeSelect()">名探偵への道</button></div></section><div class="grid"><button class="card mode-card" onclick="startStory()" aria-label="基本学習モードを開く"><div><div class="mode-icon">📖</div><h3>基本学習モード</h3><p class="muted">物語を追いながら、5つの事件を順番に解決します。</p></div><span class="pill">'+cleared+'/5章クリア</span></button><button class="card mode-card" onclick="showPracticeSelect()" aria-label="練習モードを開く"><div><div class="mode-icon">🕵️</div><h3>練習モード</h3><p class="muted">名探偵への道は最初から挑戦できます。5問ごとに結果を確認します。</p></div><span class="pill gold">5問セッション</span></button></div><div class="section-title"><h2>事件ファイル</h2><span class="muted">カードを押して調査へ</span></div><div class="steps">'+chapters+'</div>');
+  render('<section class="hero"><div class="eyebrow">CASE FILE 000　データ活用調査本部</div><h2>町のデータ探偵団</h2><p>町に届く「本当かな？」を、データという手がかりで解決しよう。5つの事件を調べながら、データの見方を身につけます。</p><div class="top-actions"><button class="btn primary" onclick="startStory()">'+(cleared?'物語をつづける':'基本学習をはじめる')+'</button><button class="btn gold" onclick="showPracticeSelect()">名探偵への道</button><button class="btn" onclick="showBadges()">🏅 バッジを見る</button></div></section><div class="grid"><button class="card mode-card" onclick="startStory()" aria-label="基本学習モードを開く"><div><div class="mode-icon">📖</div><h3>基本学習モード</h3><p class="muted">物語を追いながら、5つの事件を順番に解決します。</p></div><span class="pill">'+cleared+'/5章クリア</span></button><button class="card mode-card" onclick="showPracticeSelect()" aria-label="練習モードを開く"><div><div class="mode-icon">🕵️</div><h3>練習モード</h3><p class="muted">名探偵への道は最初から挑戦できます。5問ごとに結果を確認します。</p></div><span class="pill gold">5問セッション</span></button></div><div class="section-title"><h2>事件ファイル</h2><span class="muted">カードを押して調査へ</span></div><div class="steps">'+chapters+'</div>');
 }
 renderHome();
