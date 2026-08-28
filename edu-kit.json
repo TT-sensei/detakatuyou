@@ -1,0 +1,28 @@
+{
+  "schema_version": 2,
+  "name": "町のデータ探偵団",
+  "grade": "小学校6年",
+  "subject": "算数",
+  "unit": "データの活用",
+  "stack": ["HTML", "CSS", "Vanilla JavaScript"],
+  "constraints": {
+    "no_build": true,
+    "no_api_key": true,
+    "no_external_database": true,
+    "storage": "localStorage",
+    "prioritize_tablet_landscape": true,
+    "one_screen_primary": true,
+    "supplemental_scroll_only": true
+  },
+  "learning_cycle": ["choose", "learn_or_observe", "answer", "see_feedback", "retry_or_continue"],
+  "persistence": {
+    "namespace": "detective_data_progress_v1",
+    "preserve_existing_schema": true,
+    "answer_reveal_is_correct": false
+  },
+  "protected_areas": ["問題生成", "正答判定", "学習順序", "既存localStorage"],
+  "resources": {
+    "badges": "https://tt-sensei.github.io/edu-assets/assets/badges/common/",
+    "navi_groups": "https://tt-sensei.github.io/navi-character-/assets/web/groups/learning/"
+  }
+}
