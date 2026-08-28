@@ -38,8 +38,8 @@ const BADGES=[
   {id:'mission-complete',name:'全事件解決',condition:'5つの事件をすべて解決する',image:'mission-complete',test:s=>s.story.every(Boolean)},
   {id:'practice-master',name:'練習の達人',condition:'練習問題に10問正解する',image:'practice-master',test:s=>s.solved>=10},
   {id:'problem-solver',name:'問題解決マスター',condition:'練習問題に30問正解する',image:'problem-solver',test:s=>s.solved>=30},
-  {id:'level-up',name:'ランクアップ',condition:'いずれかの章で一人前探偵になる',image:'level-up',test:s=>s.ranks.some(n=>n>=20)},
-  {id:'mastery',name:'名探偵への道',condition:'いずれかの章でベテラン探偵になる',image:'mastery',test:s=>s.ranks.some(n=>n>=50)},
+  {id:'level-up',name:'調査の積み重ね',condition:'いずれかの章で練習問題に20問正解する',image:'level-up',test:s=>s.ranks.some(n=>n>=20)},
+  {id:'mastery',name:'データの見方マスター',condition:'いずれかの章で練習問題に50問正解する',image:'mastery',test:s=>s.ranks.some(n=>n>=50)},
   {id:'deep-thinker',name:'深く考える探偵',condition:'5つの章末ミニ問題に挑戦する',image:'deep-thinker',test:s=>s.story.filter(Boolean).length>=5},
   {id:'comeback',name:'カムバック探偵',condition:'苦手パターンを2問連続で正解する',image:'comeback',test:s=>Object.values(s.patterns).some(p=>p.right>=2)},
   {id:'accuracy',name:'正確な目',condition:'練習問題に50問正解する',image:'accuracy',test:s=>s.solved>=50}
@@ -118,6 +118,7 @@ function syncBadges(){
   });
   return unlocked;
 }
+function earnedBadgeCount(){return Object.keys(state.badges||{}).length}
 function badgeNotice(badges){
   if(!badges||!badges.length)return '';
   return '<div class="badge-notice"><b>🏅 バッジを獲得！</b><span>'+badges.map(function(b){return b.name}).join('・')+'</span><button class="btn" onclick="showBadges()">コレクションを見る</button></div>';
@@ -160,7 +161,8 @@ function chapterTip(index){
 function beginStoryQuiz(){queue=[getQuestion(step),getQuestion(step),getQuestion(step),getQuestion(step)];questionIndex=0;answered=false;renderQuiz()}
 function showPracticeSelect(){
   mode='practice-select';
-  render('<div class="section-title"><h2>名探偵への道</h2><span class="muted">鍛えたい章を選ぼう</span></div><div class="steps">'+STEPS.map(function(s,i){const n=state.ranks[i]||0;return '<button class="card step-card" onclick="startPractice('+i+')"><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><span class="rank">'+rankName(n)+'</span><small class="muted">正解 '+n+'問</small></button>'}).join('')+'</div>');
+  const earned=earnedBadgeCount();
+  render('<div class="section-title"><h2>名探偵への道</h2><span class="muted">特訓してバッジを集めよう</span></div><section class="card badge-summary"><div class="bar"><h3>探偵の成果</h3><span class="pill">🏅 '+earned+'/'+BADGES.length+'</span></div><p class="muted">練習の正解や事件の解決で、バッジが増えていきます。</p><button class="btn" onclick="showBadges()">バッジコレクションを見る</button></section><div class="steps">'+STEPS.map(function(s,i){const n=state.ranks[i]||0;return '<button class="card step-card" onclick="startPractice('+i+')"><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><small class="muted">この章の累積正解 '+n+'問</small></button>'}).join('')+'</div>');
 }
 function startPractice(index,pattern){
   mode='practice';step=index;practiceIndex=0;practiceAttempts=0;forcedPracticePattern=pattern||null;answered=false;nextPractice();
@@ -374,22 +376,21 @@ function submitAnswer(ok){
     feedback.innerHTML=naviFeedback('retry')+'<b>おしい。まだ次の事件には進めません。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn" onclick="revealAnswer()">答えを見る</button><button class="btn primary" onclick="retryCurrent()">同じ問題にもう一度挑戦</button>';
     return;
   }
-  let rankUp='';
   if(mode==='practice'){
-    const before=rankName(state.ranks[step]);state.ranks[step]++;state.solved++;const after=rankName(state.ranks[step]);
-    if(before!==after)rankUp='<div class="rank-up">🎉 '+after+'に昇格！<br><small>先輩探偵「その調子で、データの見方をみがこう！」</small></div>';
+    state.ranks[step]++;state.solved++;
     if(state.ranks.every(function(n){return n>=200})&&!state.titles.includes('殿堂入り探偵'))state.titles.push('殿堂入り探偵');
     saveState();
   }
   const feedback=document.querySelector('#feedback');feedback.className='feedback ok';
-  feedback.innerHTML=naviFeedback('correct')+'<b>正解！</b>'+rankUp+badgeNotice(lastBadgeUnlocks)+'<p>'+current.explain+'</p><button class="btn primary" onclick="afterAnswer()">'+(mode==='story'?(questionIndex<queue.length-1?'次の問題へ':'章末ミニ問題へ'):'次の事件を調べる')+'</button>';
+  feedback.innerHTML=naviFeedback('correct')+'<b>正解！</b>'+badgeNotice(lastBadgeUnlocks)+'<p>'+current.explain+'</p><button class="btn primary" onclick="afterAnswer()">'+(mode==='story'?(questionIndex<queue.length-1?'次の問題へ':'章末ミニ問題へ'):'次の事件を調べる')+'</button>';
 }
 function afterAnswer(){
   if(mode==='story'){if(questionIndex<queue.length-1){questionIndex++;current=queue[questionIndex];renderQuiz()}else renderMini();return}
   if(practiceIndex<4){practiceIndex++;nextPractice()}else renderPracticeResult();
 }
 function renderPracticeResult(){
-  render('<section class="result-card card"><div style="font-size:4rem">🕵️</div><div class="eyebrow">5問セッション完了</div><h2>'+STEPS[step].short+'の調査結果</h2><p>5問の調査を終えました。正解するまで考えた回数も、次の学習に生かされます。</p><div class="case-file"><b>今回の調査</b><p>5問クリア　／　挑戦した回数 '+practiceAttempts+'回</p><p class="rank">'+rankName(state.ranks[step])+'　／　累積正解 '+state.ranks[step]+'問</p></div><button class="btn primary" onclick="startPractice('+step+')">もう5問調べる</button><button class="btn ghost" onclick="showPracticeSelect()">章選択へ</button><button class="btn" onclick="showNotebook()">探偵手帳を見る</button></section>');
+  const earned=earnedBadgeCount();
+  render('<section class="result-card card"><div style="font-size:4rem">🕵️</div><div class="eyebrow">5問セッション完了</div><h2>'+STEPS[step].short+'の調査結果</h2><p>5問の調査を終えました。正解するまで考えた回数も、次の学習に生かされます。</p>'+badgeNotice(lastBadgeUnlocks)+'<div class="case-file"><b>今回の調査</b><p>5問クリア　／　挑戦した回数 '+practiceAttempts+'回</p><p class="badge-progress">🏅 現在の成果：'+earned+'/'+BADGES.length+'個のバッジ</p></div><button class="btn primary" onclick="startPractice('+step+')">もう5問調べる</button><button class="btn ghost" onclick="showPracticeSelect()">章選択へ</button><button class="btn" onclick="showNotebook()">探偵手帳を見る</button></section>');
 }
 function record(pattern,ok){
   const key='s'+(step+1)+'-'+pattern,p=state.patterns[key]||{wrong:0,right:0,weak:false};
@@ -454,9 +455,10 @@ function resetProgress(){
   state=freshState();saveState();goHome();
 }
 function showNotebook(){
-  const chapters=STEPS.map(function(s,i){const n=state.ranks[i]||0;return '<article class="card"><div class="bar"><b>Step '+(i+1)+'　'+s.short+'</b><span class="rank">'+rankName(n)+'</span></div><p class="muted">累積正解 '+n+'問　／　解決済み事件 '+n+'件</p><div class="progress"><i style="width:'+Math.min(100,n/2)+'%"></i></div><button class="btn primary" style="margin-top:12px" onclick="startPractice('+i+')">この章を特訓</button></article>'}).join('');
+  const earned=earnedBadgeCount();
+  const chapters=STEPS.map(function(s,i){const n=state.ranks[i]||0;return '<article class="card"><div class="bar"><b>Step '+(i+1)+'　'+s.short+'</b><span class="badge-mini">正解 '+n+'問</span></div><p class="muted">この章で積み重ねた正解数です。苦手な見方は下で特訓できます。</p><div class="progress"><i style="width:'+Math.min(100,n/2)+'%"></i></div><button class="btn primary" style="margin-top:12px" onclick="startPractice('+i+')">この章を特訓</button></article>'}).join('');
   const weak=Object.entries(state.patterns).filter(function(pair){return pair[1].weak}).map(function(pair){const id=pair[0],p=pair[1],index=Number(id[1])-1;return '<div class="weak"><span><b>'+patternLabel(id)+'</b><br><small>連続'+p.wrong+'回不正解</small></span><button class="btn" data-step="'+index+'" data-pattern="'+id.slice(3)+'" onclick="startWeakPractice(this.dataset.step,this.dataset.pattern)">特訓</button></div>'}).join('')||'<div class="empty">まだ未解決事件はありません。間違いも大切な手がかりです。</div>';
-  render('<div class="section-title"><h2>探偵手帳</h2><span class="muted">調査の記録</span></div><div class="grid">'+chapters+'</div><section class="card" style="margin-top:18px"><h3>未解決事件（にがてパターン）</h3><div class="note-list">'+weak+'</div></section><section class="card" style="margin-top:18px"><h3>称号</h3><p>'+(state.titles.includes('殿堂入り探偵')?'<span class="pill gold">殿堂入り探偵</span>':'5つの章すべてで伝説の探偵を目指そう。')+'</p></section><section class="card management" style="margin-top:18px"><h3>学習記録の管理</h3><p class="muted">この端末のブラウザに保存されています。先生に見せたり、端末を変えたりするときは記録を書き出せます。</p><button class="btn" onclick="exportProgress()">記録を書き出す</button><button class="btn ghost" onclick="resetProgress()">記録をリセット</button></section>');
+  render('<div class="section-title"><h2>探偵手帳</h2><span class="muted">学習の記録</span></div><section class="card badge-summary"><div class="bar"><h3>探偵の成果</h3><span class="pill">🏅 '+earned+'/'+BADGES.length+' 獲得</span></div><p class="muted">事件の解決や練習の積み重ねは、すべてバッジに残ります。</p><button class="btn" onclick="showBadges()">バッジコレクションを見る</button></section><div class="grid">'+chapters+'</div><section class="card" style="margin-top:18px"><h3>未解決事件（にがてパターン）</h3><div class="note-list">'+weak+'</div></section><section class="card management" style="margin-top:18px"><h3>学習記録の管理</h3><p class="muted">この端末のブラウザに保存されています。先生に見せたり、端末を変えたりするときは記録を書き出せます。</p><button class="btn" onclick="exportProgress()">記録を書き出す</button><button class="btn ghost" onclick="resetProgress()">記録をリセット</button></section>');
 }
 function renderHome(){
   const cleared=state.story.filter(Boolean).length;
