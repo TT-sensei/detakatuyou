@@ -88,3 +88,23 @@ detakatuyou/
 ## 公開ページ
 
 [GitHub Pagesで開く](https://tt-sensei.github.io/detakatuyou/)
+
+## edu-kit準拠
+
+この教材は、edu-kitの設計原則に合わせて、学習内容を最優先にした構成で運用します。
+
+- 学習入口、問題、主要操作、現在地を先に見せる
+- 不正解のあとに、ヒント、答えを見る、再挑戦を用意する
+- 答えを見たことは正答として記録しない
+- 既存の学習記録キーを保ったまま、StorageManagerで保存を管理する
+- edu:correct、edu:wrong、edu:progress、edu:screenchangeを画面連携の境界にする
+- タブレット横向きを基本にし、補足説明だけを必要に応じてスクロールする
+- 画像が読み込めなくても学習本体は継続し、reduced motionにも対応する
+
+## NAVIキャラ
+
+NAVIキャラは問題や答えの代わりではなく、調査の視点をそっと示す補助役として配置しています。実在確認した軽量WebPを使用しています。
+
+- トップ: `group-learning-pair-diagram.webp`
+- フィードバック: `group-learning-pair-observation.webp` / `group-learning-pair-consulting.webp`
+- 参照元: `TT-sensei/navi-character-` の `assets/web/groups/learning/`
