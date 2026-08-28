@@ -43,3 +43,10 @@ button:disabled{cursor:not-allowed}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:.01ms!important}
   .mode-card:hover{transform:none}
 }
+
+/* badge-first achievement surfaces */
+.badge-summary{margin:18px 0;padding:16px 18px;border:2px solid #f0d27a;border-radius:18px;background:linear-gradient(135deg,#fffdf3,#fff7d9)}
+.badge-summary h3{margin:0}
+.badge-summary .btn{margin-top:4px}
+.badge-progress{font-weight:800;color:var(--green)}
+.badge-mini{display:inline-block;border-radius:99px;padding:3px 9px;background:#fff2cb;color:#7a5500;font-size:.85rem;font-weight:800}
