@@ -364,7 +364,7 @@ function revealAnswer(){
   feedback.className='feedback hint-revealed';
   feedback.innerHTML=naviFeedback('retry')+'<b>答えを確認しました。</b><p>'+answer+'</p><p class="muted">答えを見た問題は、正解としては記録されません。見たあとに、もう一度やってみよう。</p><button class="btn primary" onclick="retryCurrent()">もう一度挑戦</button>';
 }
-function retryCurrent(){answered=false;renderQuiz()}
+function retryCurrent(){answered=false;if(current&&current.isMini){renderMiniCurrent();return}renderQuiz()}
 function submitAnswer(ok){
   if(answered)return;answered=true;record(current.pattern,ok);emitEdu(ok?EDU_EVENTS.CORRECT:EDU_EVENTS.WRONG,{pattern:current.pattern,mode:mode});
   if(mode==='practice')practiceAttempts++;
@@ -407,7 +407,7 @@ function miniQuestion(index){
   ][index]();
 }
 function renderMini(){
-  current=miniQuestion(step);renderMiniCurrent();
+  current=miniQuestion(step);current.isMini=true;renderMiniCurrent();
 }
 function renderMiniCurrent(){
   answered=false;
