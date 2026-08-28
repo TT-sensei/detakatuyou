@@ -2,6 +2,36 @@
 // 町のデータ探偵団 — 学習・練習・進捗を一体で管理するアプリ
 const STORAGE={legacy:'detective_data_progress_v1',story:'detective_story_progress',ranks:'detective_rank_steps',patterns:'detective_weak_patterns',titles:'detective_titles',caseNo:'detective_case_no'};
 const BADGE_BASE='https://tt-sensei.github.io/edu-assets/assets/badges/common/';
+const NAVI_GROUP_BASE='https://tt-sensei.github.io/navi-character-/assets/web/groups/learning/';
+const NAVI_GROUPS=[
+  {file:'group-learning-pair-observation.webp',alt:'データを観察しながら相談するNAVIキャラ'},
+  {file:'group-learning-pair-diagram.webp',alt:'図を見ながら考えるNAVIキャラ'},
+  {file:'group-learning-pair-consulting.webp',alt:'相談しながら考えるNAVIキャラ'}
+];
+const EDU_EVENTS=Object.freeze({
+  CORRECT:'edu:correct',
+  WRONG:'edu:wrong',
+  SCREENCHANGE:'edu:screenchange',
+  PROGRESS:'edu:progress',
+  BADGE:'edu:badge'
+});
+const StorageManager={
+  load(key,fallback){
+    try{
+      const value=localStorage.getItem(key);
+      return value===null?fallback:JSON.parse(value);
+    }catch{return fallback}
+  },
+  save(key,value){
+    try{
+      localStorage.setItem(key,JSON.stringify(value));
+      return true;
+    }catch(error){
+      console.warn('学習記録を保存できませんでした。',error);
+      return false;
+    }
+  }
+};
 const BADGES=[
   {id:'first-step',name:'はじめの一歩',condition:'最初の事件を調査する',image:'first-step',test:s=>s.story[0]||s.solved>0},
   {id:'explorer',name:'事件ファイル探検家',condition:'3つの事件を解決する',image:'explorer',test:s=>s.story.filter(Boolean).length>=3},
@@ -14,7 +44,7 @@ const BADGES=[
   {id:'comeback',name:'カムバック探偵',condition:'苦手パターンを2問連続で正解する',image:'comeback',test:s=>Object.values(s.patterns).some(p=>p.right>=2)},
   {id:'accuracy',name:'正確な目',condition:'練習問題に50問正解する',image:'accuracy',test:s=>s.solved>=50}
 ];
-const freshState=()=>({story:[false,false,false,false,false],ranks:[0,0,0,0,0],patterns:{},titles:[],caseNo:0,solved:0,badges:{}});
+const freshState=()=>({schemaVersion:2,story:[false,false,false,false,false],ranks:[0,0,0,0,0],patterns:{},titles:[],caseNo:0,solved:0,badges:{}});
 let state=loadState(),mode='home',step=0,queue=[],questionIndex=0,practiceIndex=0,practiceAttempts=0,current=null,answered=false,forcedPracticePattern=null,buildCounts=[],lastBadgeUnlocks=[];
 
 const STEPS=[
@@ -32,7 +62,22 @@ const CONCEPTS=[
   {title:'結論を吟味する',summary:'データの集め方・代表値・目盛りを確かめて判断する。',formula:'根拠＝データ＋集め方＋見せ方',trap:'一つの数値やグラフだけで決めつけない。'}
 ];
 
-function read(key,fallback){try{const value=localStorage.getItem(key);return value===null?fallback:JSON.parse(value)}catch{return fallback}}
+function read(key,fallback){return StorageManager.load(key,fallback)}
+function emitEdu(name,detail){
+  try{document.dispatchEvent(new CustomEvent(name,{detail:detail||{}}))}catch(error){}
+}
+function naviImage(kind){
+  const index={observe:0,diagram:1,consulting:2}[kind]??0;
+  const item=NAVI_GROUPS[index];
+  return '<img class="navi-image" src="'+NAVI_GROUP_BASE+item.file+'" alt="'+item.alt+'" loading="lazy" onerror="this.hidden=true">';
+}
+function naviSupport(label,copy,kind){
+  return '<aside class="navi-support '+(kind||'observe')+'" aria-label="'+esc(label)+'">'+naviImage(kind||'observe')+'<div class="navi-copy"><b>'+esc(label)+'</b><span>'+esc(copy)+'</span></div></aside>';
+}
+function naviFeedback(kind){
+  const correct=kind==='correct';
+  return '<div class="navi-feedback">'+naviImage(correct?'diagram':'consulting')+'<span>'+ (correct?'NAVIも調査成功を喜んでいます。':'NAVIと手がかりをもう一度見直そう。') +'</span></div>';
+}
 function loadRanks(fallback){
   return fallback.map(function(value,index){return read('detective_rank_step'+(index+1),value)});
 }
@@ -53,7 +98,9 @@ function loadState(){
 function saveState(){
   try{
     lastBadgeUnlocks=syncBadges();
-    localStorage.setItem(STORAGE.legacy,JSON.stringify(state));
+    state.schemaVersion=2;
+    StorageManager.save(STORAGE.legacy,state);
+    emitEdu(EDU_EVENTS.PROGRESS,{solved:state.solved,story:state.story.slice(),ranks:state.ranks.slice()});
   }catch(error){
     // 保存できない環境でも、学習画面自体は止めない。
     console.warn('学習記録を保存できませんでした。',error);
@@ -66,6 +113,7 @@ function syncBadges(){
     if(!state.badges[badge.id]&&badge.test(state)){
       state.badges[badge.id]={earnedAt:new Date().toISOString()};
       unlocked.push(badge);
+      emitEdu(EDU_EVENTS.BADGE,{badge:badge});
     }
   });
   return unlocked;
@@ -85,13 +133,14 @@ function choice(items){return items[rand(0,items.length-1)]}
 
 function header(){
   const earned=Object.keys(state.badges||{}).length;
-  return '<header class="top"><div class="brand"><div class="badge">⌕</div><div><h1>町のデータ探偵団</h1><small>データを見て、考えて、確かな結論を</small></div></div><div class="top-actions"><button class="btn" onclick="showBadges()">🏅 バッジ '+earned+'/'+BADGES.length+'</button><button class="btn" onclick="showNotebook()">探偵手帳</button><button class="btn ghost" onclick="goHome()">トップ</button></div></header>';
+  return '<header class="top" aria-label="町のデータ探偵団のナビゲーション"><div class="brand"><div class="badge" aria-hidden="true">⌕</div><div><h1>町のデータ探偵団</h1><small>小学6年・算数「データの活用」</small></div></div><div class="top-actions"><button class="btn" onclick="showBadges()">🏅 バッジ '+earned+'/'+BADGES.length+'</button><button class="btn" onclick="showNotebook()">探偵手帳</button><button class="btn ghost" onclick="goHome()">トップ</button></div></header>';
 }
 function render(html){
   document.querySelector('#app').innerHTML=header()+html;
   // 画面更新ごとのsmoothスクロールは、連続タップ時にアニメーションが
   // 重なって反応が遅く感じられるため、即時移動にする。
   window.scrollTo(0,0);
+  emitEdu(EDU_EVENTS.SCREENCHANGE,{mode:mode});
 }
 function goHome(){mode='home';renderHome()}
 
@@ -272,7 +321,7 @@ function renderQuiz(){
   }
   const concept=CONCEPTS[step];
   const studyCard='<details class="study-card"><summary>見方カード：「'+concept.title+'」</summary><p>'+concept.summary+'</p><small><b>覚えておくこと：</b>'+concept.formula+'　<b>注意：</b>'+concept.trap+'</small></details>';
-  render('<section class="card question"><div class="q-head"><span class="q-number">'+number+'</span><span class="pill">'+s.short+'</span></div>'+(mode==='practice'?'<div class="case-file"><b>'+flavor+'</b>から届いた未解決事件。データを手がかりに調査しよう。</div>':'')+'<h2 class="q-title">'+q.text+'</h2>'+studyCard+body+'<div id="feedback"></div></section>');
+  render('<section class="card question"><div class="q-head"><span class="q-number">'+number+'</span><span class="pill">'+s.short+'</span></div>'+(mode==='practice'?'<div class="case-file"><b>'+flavor+'</b>から届いた未解決事件。データを手がかりに調査しよう。</div>':'')+'<h2 class="q-title">'+q.text+'</h2>'+studyCard+body+'<div id="feedback" aria-live="polite"></div></section>');
 }
 function buildDotsMarkup(q){
   return '<div class="build-axis">'+q.values.map(function(value,index){return '<div class="build-column"><div class="build-stack">'+Array.from({length:buildCounts[index]||0},function(){return '<i class="dot build-dot"></i>'}).join('')+'</div><div class="build-controls"><button class="axis-number minus" onclick="removeBuildDot('+index+')">−</button><span class="axis-number value">'+value+'</span><button class="axis-number" onclick="addBuildDot('+index+')">＋</button></div></div>'}).join('')+'</div>';
@@ -305,14 +354,24 @@ function hintFor(pattern){
   if(pattern.startsWith('hist-'))return '柱の高さだけでなく、横への広がりや山のまとまりも見よう。';
   return '結論だけでなく、データの集め方や見せ方に目を向けよう。';
 }
+function revealAnswer(){
+  if(!current)return;
+  const feedback=document.querySelector('#feedback');
+  if(!feedback)return;
+  const answer=current.kind==='build-dot'
+    ? '正しい点の数：'+current.values.map(function(value,index){return value+'は'+current.targetCounts[index]+'個'}).join('、')
+    : '答え：'+esc(current.choices[current.answer]);
+  feedback.className='feedback hint-revealed';
+  feedback.innerHTML=naviFeedback('retry')+'<b>答えを確認しました。</b><p>'+answer+'</p><p class="muted">答えを見た問題は、正解としては記録されません。見たあとに、もう一度やってみよう。</p><button class="btn primary" onclick="retryCurrent()">もう一度挑戦</button>';
+}
 function retryCurrent(){answered=false;renderQuiz()}
 function submitAnswer(ok){
-  if(answered)return;answered=true;record(current.pattern,ok);
+  if(answered)return;answered=true;record(current.pattern,ok);emitEdu(ok?EDU_EVENTS.CORRECT:EDU_EVENTS.WRONG,{pattern:current.pattern,mode:mode});
   if(mode==='practice')practiceAttempts++;
   if(!ok){
     saveState();
     const feedback=document.querySelector('#feedback');feedback.className='feedback bad';
-    feedback.innerHTML='<b>おしい。まだ次の事件には進めません。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="retryCurrent()">同じ問題にもう一度挑戦</button>';
+    feedback.innerHTML=naviFeedback('retry')+'<b>おしい。まだ次の事件には進めません。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn" onclick="revealAnswer()">答えを見る</button><button class="btn primary" onclick="retryCurrent()">同じ問題にもう一度挑戦</button>';
     return;
   }
   let rankUp='';
@@ -323,7 +382,7 @@ function submitAnswer(ok){
     saveState();
   }
   const feedback=document.querySelector('#feedback');feedback.className='feedback ok';
-  feedback.innerHTML='<b>正解！</b>'+rankUp+badgeNotice(lastBadgeUnlocks)+'<p>'+current.explain+'</p><button class="btn primary" onclick="afterAnswer()">'+(mode==='story'?(questionIndex<queue.length-1?'次の問題へ':'章末ミニ問題へ'):'次の事件を調べる')+'</button>';
+  feedback.innerHTML=naviFeedback('correct')+'<b>正解！</b>'+rankUp+badgeNotice(lastBadgeUnlocks)+'<p>'+current.explain+'</p><button class="btn primary" onclick="afterAnswer()">'+(mode==='story'?(questionIndex<queue.length-1?'次の問題へ':'章末ミニ問題へ'):'次の事件を調べる')+'</button>';
 }
 function afterAnswer(){
   if(mode==='story'){if(questionIndex<queue.length-1){questionIndex++;current=queue[questionIndex];renderQuiz()}else renderMini();return}
@@ -352,13 +411,13 @@ function renderMini(){
 }
 function renderMiniCurrent(){
   answered=false;
-  render('<section class="card question"><div class="eyebrow">章末ミニ問題</div><h2 class="q-title">'+current.text+'</h2><div class="choices">'+current.choices.map(function(c,i){return '<button class="choice" onclick="answerMini('+i+')">'+esc(c)+'</button>'}).join('')+'</div><div id="feedback"></div></section>');
+  render('<section class="card question"><div class="eyebrow">章末ミニ問題</div><h2 class="q-title">'+current.text+'</h2><div class="choices">'+current.choices.map(function(c,i){return '<button class="choice" onclick="answerMini('+i+')">'+esc(c)+'</button>'}).join('')+'</div><div id="feedback" aria-live="polite"></div></section>');
 }
 function answerMini(index){
-  if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(MINI_TO_PATTERN[current.pattern]||current.pattern,ok);saveState();
+  if(answered)return;const ok=index===current.answer;document.querySelectorAll('.choice').forEach(function(button,i){if(i===current.answer&&ok)button.classList.add('correct');if(i===index&&!ok)button.classList.add('wrong')});answered=true;record(MINI_TO_PATTERN[current.pattern]||current.pattern,ok);emitEdu(ok?EDU_EVENTS.CORRECT:EDU_EVENTS.WRONG,{pattern:current.pattern,mode:mode});saveState();
   const feedback=document.querySelector('#feedback');
-  if(!ok){feedback.className='feedback bad';feedback.innerHTML='<b>おしい。章を解決するには正解が必要です。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn primary" onclick="renderMiniCurrent()">もう一度考える</button>';return}
-  feedback.className='feedback ok';feedback.innerHTML='<b>正解！</b>'+badgeNotice(lastBadgeUnlocks)+'<p>'+current.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>';
+  if(!ok){feedback.className='feedback bad';feedback.innerHTML=naviFeedback('retry')+'<b>おしい。章を解決するには正解が必要です。</b><p><b>ヒント：</b>'+hintFor(current.pattern)+'</p><button class="btn" onclick="revealAnswer()">答えを見る</button><button class="btn primary" onclick="renderMiniCurrent()">もう一度考える</button>';return}
+  feedback.className='feedback ok';feedback.innerHTML=naviFeedback('correct')+'<b>正解！</b>'+badgeNotice(lastBadgeUnlocks)+'<p>'+current.explain+'</p><button class="btn primary" onclick="finishStory()">事件解決へ</button>';
 }
 function finishStory(){
   state.story[step]=true;saveState();
@@ -378,7 +437,7 @@ function patternLabel(id){
 }
 function startWeakPractice(index,pattern){startPractice(Number(index),pattern)}
 function showBadges(){
-  if(syncBadges().length)localStorage.setItem(STORAGE.legacy,JSON.stringify(state));
+  if(syncBadges().length)StorageManager.save(STORAGE.legacy,state);
   const earned=Object.keys(state.badges||{}).length;
   const cards=BADGES.map(function(badge){
     const record=state.badges[badge.id],date=record&&record.earnedAt?new Date(record.earnedAt).toLocaleDateString('ja-JP'):'';
@@ -403,8 +462,8 @@ function renderHome(){
   const cleared=state.story.filter(Boolean).length;
   const chapters=STEPS.map(function(s,i){
     const open=i===0||state.story[i-1];
-    return '<button class="card step-card '+(!open?'locked':'')+'" '+(open?'onclick="openStory('+i+')"':'disabled')+'><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><span class="'+(state.story[i]?'pill':'muted')+'">'+(state.story[i]?'解決済み':open?'この事件へ':'🔒 前の事件から')+'</span></button>';
+    return '<button class="card step-card '+(!open?'locked':'')+'" '+(open?'onclick="openStory('+i+')':'disabled')+'><div class="num">'+s.icon+' '+(i+1)+'</div><h3>'+s.short+'</h3><span class="'+(state.story[i]?'pill':'muted')+'">'+(state.story[i]?'解決済み':open?'この事件へ':'🔒 前の事件から')+'</span></button>';
   }).join('');
-  render('<section class="hero"><div class="eyebrow">CASE FILE 000　データ活用調査本部</div><h2>町のデータ探偵団</h2><p>町に届く「本当かな？」を、データという手がかりで解決しよう。5つの事件を調べながら、データの見方を身につけます。</p><div class="top-actions"><button class="btn primary" onclick="startStory()">'+(cleared?'物語をつづける':'基本学習をはじめる')+'</button><button class="btn gold" onclick="showPracticeSelect()">名探偵への道</button><button class="btn" onclick="showBadges()">🏅 バッジを見る</button></div></section><div class="grid"><button class="card mode-card" onclick="startStory()" aria-label="基本学習モードを開く"><div><div class="mode-icon">📖</div><h3>基本学習モード</h3><p class="muted">物語を追いながら、5つの事件を順番に解決します。</p></div><span class="pill">'+cleared+'/5章クリア</span></button><button class="card mode-card" onclick="showPracticeSelect()" aria-label="練習モードを開く"><div><div class="mode-icon">🕵️</div><h3>練習モード</h3><p class="muted">名探偵への道は最初から挑戦できます。5問ごとに結果を確認します。</p></div><span class="pill gold">5問セッション</span></button></div><div class="section-title"><h2>事件ファイル</h2><span class="muted">カードを押して調査へ</span></div><div class="steps">'+chapters+'</div>');
+  render('<section class="hero"><div class="hero-layout"><div class="hero-copy"><div class="eyebrow">CASE FILE 000　データ活用調査本部</div><h2>町のデータ探偵団</h2><p>町に届く「本当かな？」を、データという手がかりで解決しよう。5つの事件を調べながら、データの見方を身につけます。</p><div class="top-actions"><button class="btn primary" onclick="startStory()">'+(cleared?'物語をつづける':'基本学習をはじめる')+'</button><button class="btn gold" onclick="showPracticeSelect()">名探偵への道</button><button class="btn" onclick="showBadges()">🏅 バッジを見る</button></div></div>'+naviSupport('調査サポート','データを見て、図で比べて、確かな結論を見つけよう。','diagram')+'</div></section><div class="grid"><button class="card mode-card" onclick="startStory()" aria-label="基本学習モードを開く"><div><div class="mode-icon">📖</div><h3>基本学習モード</h3><p class="muted">物語を追いながら、5つの事件を順番に解決します。</p></div><span class="pill">'+cleared+'/5章クリア</span></button><button class="card mode-card" onclick="showPracticeSelect()" aria-label="練習モードを開く"><div><div class="mode-icon">🕵️</div><h3>練習モード</h3><p class="muted">名探偵への道は最初から挑戦できます。5問ごとに結果を確認します。</p></div><span class="pill gold">5問セッション</span></button></div><div class="section-title"><h2>事件ファイル</h2><span class="muted">カードを押して調査へ</span></div><div class="steps">'+chapters+'</div>');
 }
 renderHome();
